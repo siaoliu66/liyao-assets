@@ -1,0 +1,2160 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>資產管理系統</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<!-- Firebase (Firestore) — shared backend so this file works once self-hosted outside Claude -->
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
+<script>
+  firebase.initializeApp({
+    apiKey: "AIzaSyDnN9uL6BjSg3UVkRH8HQpSRdbI6Aa6_MU",
+    authDomain: "liyao-111e7.firebaseapp.com",
+    projectId: "liyao-111e7",
+    storageBucket: "liyao-111e7.firebasestorage.app",
+    messagingSenderId: "1043941611422",
+    appId: "1:1043941611422:web:f6443641b697641856288f"
+  });
+  const fbDocRef = firebase.firestore().collection('asset-hub').doc('shared-db');
+</script>
+<style>
+  :root{
+    --sidebar-bg:#0B1220;
+    --sidebar-bg-2:#121C33;
+    --sidebar-text:#8AA0C7;
+    --sidebar-text-active:#FFFFFF;
+    --accent:#0E9488;
+    --accent-2:#14B8A6;
+    --accent-soft:#DFF6F2;
+    --bg:#EEF2F6;
+    --surface:#FFFFFF;
+    --border:#E1E7EF;
+    --text:#152238;
+    --text-soft:#5B6B85;
+    --text-faint:#94A3B8;
+    --danger:#D6493B;
+    --danger-soft:#FBE7E4;
+    --warning:#C8790A;
+    --warning-soft:#FBEED8;
+    --success:#1A8A5E;
+    --success-soft:#DFF3E9;
+    --info:#2563C7;
+    --info-soft:#E1EBFB;
+    --gray-soft:#EEF1F5;
+    --radius:10px;
+    --shadow:0 1px 2px rgba(15,23,42,.06), 0 8px 24px -12px rgba(15,23,42,.12);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    font-family:'Noto Sans TC',-apple-system,BlinkMacSystemFont,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    font-size:14px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  button{font-family:inherit;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:20px;border:2px solid var(--bg);}
+  ::-webkit-scrollbar-track{background:transparent;}
+
+  /* ---------- App shell ---------- */
+  #app{display:flex;min-height:100vh;}
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{
+    width:252px;flex-shrink:0;
+    background:linear-gradient(180deg,var(--sidebar-bg) 0%, var(--sidebar-bg-2) 100%);
+    display:flex;flex-direction:column;
+    position:sticky;top:0;height:100vh;
+  }
+  .brand{
+    display:flex;align-items:center;gap:10px;
+    padding:22px 20px 18px 20px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+  }
+  .brand-mark{
+    width:34px;height:34px;border-radius:9px;
+    background:linear-gradient(135deg,var(--accent-2),var(--accent));
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+    box-shadow:0 4px 14px -2px rgba(14,148,136,.55);
+  }
+  .brand-mark svg{width:19px;height:19px;}
+  .brand-text{line-height:1.15;}
+  .brand-text .t1{color:#fff;font-weight:700;font-size:15px;letter-spacing:.3px;}
+  .brand-text .t2{color:#647episode;color:#6C81A8;font-size:11px;letter-spacing:1.5px;margin-top:2px;font-family:'JetBrains Mono',monospace;}
+
+  .nav{flex:1;overflow-y:auto;padding:14px 12px;}
+  .nav-group{margin-bottom:4px;}
+  .nav-group-btn{
+    width:100%;display:flex;align-items:center;gap:10px;
+    background:none;border:none;color:var(--sidebar-text);
+    padding:10px 10px;border-radius:8px;cursor:pointer;
+    font-size:13.5px;font-weight:500;text-align:left;
+    transition:background .15s,color .15s;
+  }
+  .nav-group-btn:hover{background:rgba(255,255,255,.05);color:#fff;}
+  .nav-group-btn .icon{width:17px;height:17px;flex-shrink:0;opacity:.85;}
+  .nav-group-btn .chev{margin-left:auto;width:13px;height:13px;transition:transform .18s;opacity:.6;}
+  .nav-group.open .nav-group-btn .chev{transform:rotate(90deg);}
+  .nav-group.open .nav-group-btn{color:#fff;}
+  .nav-sub{
+    max-height:0;overflow:hidden;transition:max-height .2s ease;
+    display:flex;flex-direction:column;gap:1px;padding-left:14px;margin-top:2px;
+  }
+  .nav-group.open .nav-sub{max-height:400px;}
+  .nav-item{
+    display:flex;align-items:center;gap:9px;
+    padding:8px 10px 8px 22px;border-radius:7px;cursor:pointer;
+    color:var(--sidebar-text);font-size:13px;position:relative;
+    border-left:2px solid transparent;
+    transition:background .15s,color .15s;
+  }
+  .nav-item:hover{background:rgba(255,255,255,.05);color:#fff;}
+  .nav-item.active{
+    background:rgba(14,148,136,.18);color:#fff;font-weight:600;
+    border-left:2px solid var(--accent-2);
+  }
+  .nav-item .dot{width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.5;flex-shrink:0;}
+
+  .sidebar-foot{
+    padding:14px 18px;border-top:1px solid rgba(255,255,255,.06);
+    display:flex;align-items:center;gap:10px;
+  }
+  .avatar{
+    width:30px;height:30px;border-radius:50%;
+    background:linear-gradient(135deg,#4C6EF5,#7048E8);
+    display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex-shrink:0;
+  }
+  .sidebar-foot .who{line-height:1.2;}
+  .sidebar-foot .who .n{color:#fff;font-size:12.5px;font-weight:600;}
+  .sidebar-foot .who .r{color:#6C81A8;font-size:11px;}
+
+  /* ---------- Main ---------- */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;}
+  .topbar{
+    background:var(--surface);border-bottom:1px solid var(--border);
+    padding:16px 28px;display:flex;align-items:center;justify-content:space-between;
+    position:sticky;top:0;z-index:20;
+  }
+  .topbar .crumbs{font-size:11.5px;color:var(--text-faint);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:3px;}
+  .topbar h1{font-size:19px;margin:0;font-weight:700;letter-spacing:-.2px;}
+  .content{padding:24px 28px 48px 28px;flex:1;}
+
+  /* ---------- Buttons ---------- */
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:9px 14px;border-radius:8px;border:1px solid var(--border);
+    background:var(--surface);color:var(--text);font-size:13px;font-weight:600;
+    cursor:pointer;transition:all .12s;white-space:nowrap;
+  }
+  .btn svg{width:15px;height:15px;flex-shrink:0;}
+  .btn:hover{background:#F8FAFC;border-color:#CBD5E1;}
+  .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .btn-primary:hover{background:#0B7C72;border-color:#0B7C72;}
+  .btn-danger{color:var(--danger);}
+  .btn-danger:hover{background:var(--danger-soft);border-color:#F3C7C1;}
+  .btn-ghost{border-color:transparent;background:transparent;}
+  .btn-ghost:hover{background:#F1F5F9;}
+  .btn-sm{padding:6px 10px;font-size:12px;}
+  .btn:disabled{opacity:.45;cursor:not-allowed;}
+  .icon-btn{
+    width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;
+    border-radius:7px;border:1px solid transparent;background:transparent;color:var(--text-soft);cursor:pointer;
+  }
+  .icon-btn:hover{background:#F1F5F9;color:var(--text);}
+  .icon-btn svg{width:16px;height:16px;}
+
+  /* ---------- Toolbar / Cards ---------- */
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+  .toolbar{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:16px 18px;flex-wrap:wrap;
+  }
+  .toolbar-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .toolbar-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .search-box{
+    display:flex;align-items:center;gap:7px;
+    border:1px solid var(--border);border-radius:8px;padding:7px 11px;background:#F8FAFC;min-width:230px;
+  }
+  .search-box svg{width:15px;height:15px;color:var(--text-faint);flex-shrink:0;}
+  .search-box input{border:none;background:none;outline:none;font-size:13px;width:100%;color:var(--text);}
+
+  .filter-bar{
+    display:none;padding:14px 18px;border-top:1px solid var(--border);
+    background:#FAFBFD;gap:12px;flex-wrap:wrap;align-items:flex-end;
+  }
+  .filter-bar.open{display:flex;}
+  .f-field{display:flex;flex-direction:column;gap:5px;min-width:150px;}
+  .f-field label{font-size:11px;color:var(--text-faint);font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
+
+  select,input[type=text],input[type=date],input[type=email],input[type=tel],textarea{
+    border:1px solid var(--border);border-radius:7px;padding:8px 10px;font-size:13px;
+    font-family:inherit;color:var(--text);background:var(--surface);outline:none;transition:border-color .12s;
+  }
+  select:focus,input:focus,textarea:focus{border-color:var(--accent-2);box-shadow:0 0 0 3px var(--accent-soft);}
+  select{cursor:pointer;}
+
+  /* ---------- Table ---------- */
+  .table-wrap{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;min-width:900px;}
+  thead th{
+    text-align:left;font-size:11.5px;color:var(--text-faint);font-weight:700;
+    text-transform:uppercase;letter-spacing:.4px;padding:11px 14px;
+    border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:#FAFBFD;
+    white-space:nowrap;
+  }
+  tbody td{padding:12px 14px;border-bottom:1px solid var(--border);font-size:13.5px;vertical-align:middle;}
+  tbody tr:hover{background:#F8FAFC;}
+  tbody tr:last-child td{border-bottom:none;}
+  .code-cell{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--text-soft);font-weight:600;}
+  .name-cell{font-weight:600;}
+  .cell-muted{color:var(--text-faint);}
+  input[type=checkbox]{
+    width:16px;height:16px;accent-color:var(--accent);cursor:pointer;
+  }
+  .row-actions{display:flex;gap:4px;}
+
+  .badge{
+    display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;
+    font-size:11.5px;font-weight:700;white-space:nowrap;
+  }
+  .badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+  .b-green{background:var(--success-soft);color:var(--success);}
+  .b-gray{background:var(--gray-soft);color:var(--text-soft);}
+  .b-amber{background:var(--warning-soft);color:var(--warning);}
+  .b-red{background:var(--danger-soft);color:var(--danger);}
+  .b-blue{background:var(--info-soft);color:var(--info);}
+
+  .empty-state{padding:60px 20px;text-align:center;color:var(--text-faint);}
+  .empty-state svg{width:44px;height:44px;margin-bottom:12px;opacity:.5;}
+  .empty-state .e-title{font-size:14px;font-weight:700;color:var(--text-soft);margin-bottom:4px;}
+
+  .table-footer{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 18px;border-top:1px solid var(--border);font-size:12.5px;color:var(--text-faint);
+    flex-wrap:wrap;gap:10px;
+  }
+  .pg-controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+  .pg-size{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-faint);}
+  .pg-size select{padding:5px 8px;font-size:12.5px;}
+  .pg-nav{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-soft);}
+  .pg-nav .icon-btn{width:26px;height:26px;}
+  .pg-nav .icon-btn svg{width:14px;height:14px;}
+  .pg-indicator{min-width:70px;text-align:center;}
+
+  /* ---------- Page header (list pages) ---------- */
+  .page-actions{display:flex;gap:8px;flex-wrap:wrap;}
+
+  /* ---------- Modal ---------- */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(2px);
+    display:none;align-items:flex-start;justify-content:center;z-index:100;padding:5vh 20px;overflow-y:auto;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal{
+    background:var(--surface);border-radius:14px;width:100%;max-width:520px;
+    box-shadow:0 20px 60px -12px rgba(15,23,42,.35);animation:modalIn .16s ease;
+  }
+  @keyframes modalIn{from{opacity:0;transform:translateY(8px) scale(.98);}to{opacity:1;transform:none;}}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border);}
+  .modal-head h3{margin:0;font-size:16px;font-weight:700;}
+  .modal-body{padding:20px 22px;max-height:65vh;overflow-y:auto;}
+  .modal-foot{display:flex;justify-content:flex-end;gap:8px;padding:16px 22px;border-top:1px solid var(--border);}
+
+  .field{margin-bottom:15px;}
+  .field label{display:block;font-size:12.5px;font-weight:700;color:var(--text-soft);margin-bottom:6px;}
+  .field label .req{color:var(--danger);margin-left:2px;}
+  .field input,.field select,.field textarea{width:100%;}
+  .field-hint{font-size:11.5px;color:var(--text-faint);margin-top:5px;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+
+  /* ---------- Toast ---------- */
+  .toast{
+    position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:#12203A;color:#fff;padding:12px 20px;border-radius:9px;font-size:13px;font-weight:600;
+    display:flex;align-items:center;gap:9px;box-shadow:0 12px 30px -8px rgba(0,0,0,.4);
+    opacity:0;pointer-events:none;transition:all .22s ease;z-index:200;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast svg{width:16px;height:16px;color:var(--accent-2);flex-shrink:0;}
+
+  #save-indicator{
+    position:fixed;top:16px;right:22px;z-index:150;
+    font-size:11.5px;font-weight:700;color:var(--text-faint);
+    background:var(--surface);border:1px solid var(--border);border-radius:99px;
+    padding:5px 12px;opacity:0;transform:translateY(-6px);
+    transition:all .2s ease;box-shadow:var(--shadow);
+  }
+  #save-indicator.show{opacity:1;transform:translateY(0);}
+  #save-indicator.is-error{color:var(--danger);border-color:#F3C7C1;}
+
+  /* ---------- Detail / inner page ---------- */
+  .detail-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;gap:12px;flex-wrap:wrap;}
+  .back-link{
+    display:inline-flex;align-items:center;gap:6px;color:var(--text-soft);font-size:13px;font-weight:600;
+    cursor:pointer;margin-bottom:10px;
+  }
+  .back-link:hover{color:var(--text);}
+  .back-link svg{width:15px;height:15px;}
+  .detail-title-row{display:flex;align-items:center;gap:12px;}
+  .detail-title-row h1{margin:0;}
+  .detail-grid{display:grid;grid-template-columns:220px 1fr;gap:20px;align-items:flex-start;}
+  @media (max-width:920px){.detail-grid{grid-template-columns:1fr;}}
+
+  .tab-rail{display:flex;flex-direction:column;gap:3px;position:sticky;top:88px;}
+  .tab-btn{
+    display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:8px;cursor:pointer;
+    font-size:13px;font-weight:600;color:var(--text-soft);border-left:2px solid transparent;
+  }
+  .tab-btn:hover{background:#F1F5F9;}
+  .tab-btn.active{background:var(--accent-soft);color:#0B7C72;border-left:2px solid var(--accent);}
+  .tab-btn .n{
+    width:20px;height:20px;border-radius:50%;background:#E7ECF3;color:var(--text-faint);
+    font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .tab-btn.active .n{background:var(--accent);color:#fff;}
+
+  .section-card{padding:24px 26px;margin-bottom:16px;}
+  .section-card h3{margin:0 0 3px 0;font-size:15px;font-weight:700;}
+  .section-card .sub{font-size:12.5px;color:var(--text-faint);margin-bottom:18px;}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 18px;}
+  @media (max-width:600px){.form-grid{grid-template-columns:1fr;}}
+  .form-grid .full{grid-column:1/-1;}
+  .ro-field{
+    padding:9px 11px;background:#F8FAFC;border:1px dashed var(--border);border-radius:7px;
+    font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text-soft);font-weight:600;
+  }
+  .view-value{padding:8px 0;font-size:13.5px;font-weight:600;color:var(--text);min-height:20px;}
+  .view-value.empty{color:var(--text-faint);font-weight:400;font-style:normal;}
+
+  .barcode-block{
+    display:flex;flex-direction:column;align-items:center;gap:14px;padding:36px 20px;
+    background:#FAFBFD;border:1px solid var(--border);border-radius:10px;
+  }
+  .barcode-block svg{max-width:100%;}
+  .barcode-meta{font-size:12.5px;color:var(--text-faint);text-align:center;}
+
+  /* ---------- CRUD simple pages (system mgmt) ---------- */
+  .crud-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+  .tree-card{padding:18px 20px;margin-bottom:14px;}
+  .tree-company{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .tree-company .name{font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:8px;}
+  .tree-company .name svg{width:17px;height:17px;color:var(--accent);}
+  .chip-row{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{
+    display:inline-flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border-radius:99px;
+    background:#F1F5F9;border:1px solid var(--border);font-size:12.5px;font-weight:600;color:var(--text-soft);
+  }
+  .chip button{
+    width:18px;height:18px;border-radius:50%;border:none;background:#E2E8F0;color:var(--text-faint);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+  }
+  .chip button:hover{background:var(--danger-soft);color:var(--danger);}
+  .chip button svg{width:10px;height:10px;}
+
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;}
+  @media (max-width:800px){.stat-row{grid-template-columns:repeat(2,1fr);}}
+  .stat-card{padding:16px 18px;}
+  .stat-card .label{font-size:11.5px;color:var(--text-faint);font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
+  .stat-card .val{font-size:24px;font-weight:800;margin-top:6px;letter-spacing:-.5px;}
+  .stat-card .val small{font-size:13px;color:var(--text-faint);font-weight:600;margin-left:2px;}
+
+  /* print view */
+  #print-area{display:none;}
+  @media print{
+    body *{visibility:hidden;}
+    #print-area,#print-area *{visibility:visible;}
+    #print-area{display:block;position:absolute;top:0;left:0;width:100%;}
+    .label-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:14px;}
+    .label-item{border:1px solid #999;border-radius:6px;padding:10px;text-align:center;break-inside:avoid;}
+    .label-item .lname{font-size:11px;font-weight:700;margin-bottom:4px;}
+    .label-item .lcode{font-size:10px;color:#444;margin-top:4px;font-family:'JetBrains Mono',monospace;}
+  }
+
+  .hidden{display:none !important;}
+  .req-star{color:var(--danger);}
+  .helper-note{
+    display:flex;gap:8px;background:var(--info-soft);color:#1E4C9A;border-radius:8px;padding:10px 13px;font-size:12.5px;margin-bottom:16px;
+  }
+  .helper-note svg{width:16px;height:16px;flex-shrink:0;margin-top:1px;}
+
+  /* ---------- Login gate ---------- */
+  .auth-gate{
+    position:fixed;inset:0;z-index:500;
+    background:linear-gradient(180deg,var(--sidebar-bg) 0%, var(--sidebar-bg-2) 100%);
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  .auth-card{
+    width:100%;max-width:360px;background:var(--surface);border-radius:16px;
+    padding:36px 32px;text-align:center;box-shadow:0 24px 60px -12px rgba(0,0,0,.45);
+  }
+  .auth-brand-mark{
+    width:52px;height:52px;border-radius:14px;margin:0 auto 18px auto;
+    background:linear-gradient(135deg,var(--accent-2),var(--accent));
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 6px 18px -4px rgba(14,148,136,.55);
+  }
+  .auth-brand-mark svg{width:26px;height:26px;}
+  .auth-card h2{margin:0 0 6px 0;font-size:18px;font-weight:800;}
+  .auth-card p{margin:0 0 22px 0;font-size:13px;color:var(--text-faint);}
+  .auth-card input{width:100%;text-align:center;font-size:15px;padding:11px 12px;margin-bottom:10px;}
+  .auth-error{min-height:18px;color:var(--danger);font-size:12.5px;margin-bottom:10px;}
+  .auth-submit{
+    width:100%;padding:11px 14px;border-radius:8px;border:none;
+    background:var(--accent);color:#fff;font-size:14px;font-weight:700;cursor:pointer;
+  }
+  .auth-submit:hover{background:#0B7C72;}
+</style>
+</head>
+<body>
+
+<div id="auth-gate" class="auth-gate">
+  <div class="auth-card">
+    <div class="auth-brand-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+    </div>
+    <h2>資產管理系統</h2>
+    <p>請輸入密碼以繼續</p>
+    <input type="password" id="auth-password" placeholder="密碼" autofocus onkeydown="if(event.key==='Enter') submitPassword()">
+    <div id="auth-error" class="auth-error"></div>
+    <button class="auth-submit" onclick="submitPassword()">登入</button>
+  </div>
+</div>
+<div id="app"></div>
+<div id="modal-root"></div>
+<div id="toast" class="toast"></div>
+<div id="save-indicator"></div>
+<div id="print-area"></div>
+
+<script>
+/* =========================================================================
+   ICONS (inline SVG, stroke style)
+   ========================================================================= */
+const ICONS = {
+  box: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>`,
+  settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`,
+  chev: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>`,
+  list: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>`,
+  building: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="1"/><path d="M9 22v-4h6v4M9 6h1M14 6h1M9 10h1M14 10h1M9 14h1M14 14h1"/></svg>`,
+  users: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>`,
+  folder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>`,
+  pin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
+  tag: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L11 3.83A2 2 0 009.59 3.24H4a1 1 0 00-1 1v5.59a2 2 0 00.59 1.41l9.58 9.58a2 2 0 002.82 0l4.6-4.6a2 2 0 000-2.82z"/><circle cx="7" cy="7" r="1.2"/></svg>`,
+  plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  filter: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>`,
+  download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>`,
+  upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>`,
+  printer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>`,
+  search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>`,
+  eye: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/></svg>`,
+  x: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`,
+  arrowLeft: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`,
+  info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>`,
+  barcode: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M7 5v14M11 5v14M14 5v14M18 5v14M21 5v14" stroke-linecap="butt"/></svg>`,
+  inbox: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>`,
+};
+
+/* =========================================================================
+   BARCODE (self-contained CODE128-B encoder — no external CDN dependency,
+   since third-party scripts get blocked inside the artifact sandbox)
+   ========================================================================= */
+const CODE128_BARS = [
+  11011001100,11001101100,11001100110,10010011000,10010001100,10001001100,10011001000,10011000100,
+  10001100100,11001001000,11001000100,11000100100,10110011100,10011011100,10011001110,10111001100,
+  10011101100,10011100110,11001110010,11001011100,11001001110,11011100100,11001110100,11101101110,
+  11101001100,11100101100,11100100110,11101100100,11100110100,11100110010,11011011000,11011000110,
+  11000110110,10100011000,10001011000,10001000110,10110001000,10001101000,10001100010,11010001000,
+  11000101000,11000100010,10110111000,10110001110,10001101110,10111011000,10111000110,10001110110,
+  11101110110,11010001110,11000101110,11011101000,11011100010,11011101110,11101011000,11101000110,
+  11100010110,11101101000,11101100010,11100011010,11101111010,11001000010,11110001010,10100110000,
+  10100001100,10010110000,10010000110,10000101100,10000100110,10110010000,10110000100,10011010000,
+  10011000010,10000110100,10000110010,11000010010,11001010000,11110111010,11000010100,10001111010,
+  10100111100,10010111100,10010011110,10111100100,10011110100,10011110010,11110100100,11110010100,
+  11110010010,11011011110,11011110110,11110110110,10101111000,10100011110,10001011110,10111101000,
+  10111100010,11110101000,11110100010,10111011110,10111101110,11101011110,11110101110,11010000100,
+  11010010000,11010011100,1100011101011
+];
+/** Encodes text (ASCII 32-126) as Code128 Subset B and draws it into an <svg>. */
+function renderBarcodeSVG(svgEl, text, opts){
+  opts = Object.assign({height:60, moduleWidth:2, margin:10, fontSize:13, displayValue:true, color:'#12203A'}, opts||{});
+  if(!svgEl) return;
+  const START_B = 104, STOP = 106;
+  const values = [START_B];
+  for(let i=0;i<text.length;i++){
+    const code = text.charCodeAt(i);
+    values.push(code>=32 && code<=126 ? code-32 : 0);
+  }
+  let checksum = values[0];
+  for(let i=1;i<values.length;i++) checksum += values[i]*i;
+  values.push(checksum % 103);
+  values.push(STOP);
+
+  let bin = '';
+  values.forEach(v=>{ bin += CODE128_BARS[v].toString(); });
+
+  const mw = opts.moduleWidth;
+  const barHeight = opts.height;
+  const textHeight = opts.displayValue ? opts.fontSize+8 : 0;
+  const width = bin.length*mw + opts.margin*2;
+  const height = barHeight + opts.margin*2 + textHeight;
+
+  let rects = '';
+  let x = opts.margin;
+  for(let i=0;i<bin.length;i++){
+    if(bin[i]==='1'){ rects += `<rect x="${x}" y="${opts.margin}" width="${mw}" height="${barHeight}" fill="${opts.color}"/>`; }
+    x += mw;
+  }
+  const textEl = opts.displayValue
+    ? `<text x="${width/2}" y="${opts.margin+barHeight+opts.fontSize+4}" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="${opts.fontSize}" fill="${opts.color}">${escHtml(text)}</text>`
+    : '';
+  svgEl.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svgEl.setAttribute('width', width);
+  svgEl.setAttribute('height', height);
+  svgEl.innerHTML = rects + textEl;
+}
+
+/* =========================================================================
+   DATA STORE (in-memory demo data)
+   ========================================================================= */
+let seq = { asset: 9, company: 2, dept: 5, person: 5, project: 4, location: 4, category: 8 };
+const uid = (p) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`;
+
+const db = {
+  companies: [
+    { id:'c1', name:'總公司' },
+  ],
+  departments: [
+    { id:'d1', name:'資訊部', companyId:'c1' },
+    { id:'d2', name:'人事部', companyId:'c1' },
+    { id:'d3', name:'財務部', companyId:'c1' },
+    { id:'d4', name:'業務部', companyId:'c1' },
+  ],
+  people: [
+    { id:'p1', name:'陳志明', companyId:'c1', departmentId:'d1', email:'chih.ming@example.com', phone:'0912-345-678', status:'在職' },
+    { id:'p2', name:'林雅婷', companyId:'c1', departmentId:'d2', email:'ya.ting@example.com', phone:'0922-333-444', status:'在職' },
+    { id:'p3', name:'王建宏', companyId:'c1', departmentId:'d1', email:'jian.hong@example.com', phone:'0933-222-111', status:'在職' },
+    { id:'p4', name:'黃詩涵', companyId:'c1', departmentId:'d4', email:'shi.han@example.com', phone:'0955-666-777', status:'在職' },
+  ],
+  projects: [
+    { id:'pj1', name:'ERP系統導入', code:'PRJ-2025-01', ownerId:'p1', status:'進行中' },
+    { id:'pj2', name:'辦公室遷移計畫', code:'PRJ-2025-02', ownerId:'p2', status:'進行中' },
+    { id:'pj3', name:'年度稽核專案', code:'PRJ-2024-09', ownerId:'p3', status:'已結案' },
+  ],
+  locations: [
+    { id:'l1', name:'總部3樓辦公室', code:'LOC-A3' },
+    { id:'l2', name:'總部5樓機房', code:'LOC-A5' },
+    { id:'l3', name:'新竹倉庫', code:'LOC-WH' },
+  ],
+  categories: [
+    { id:'cat1', name:'電腦設備', parentId:null },
+    { id:'cat2', name:'筆記型電腦', parentId:'cat1' },
+    { id:'cat3', name:'桌上型電腦', parentId:'cat1' },
+    { id:'cat4', name:'辦公家具', parentId:null },
+    { id:'cat5', name:'辦公桌', parentId:'cat4' },
+    { id:'cat6', name:'辦公椅', parentId:'cat4' },
+    { id:'cat7', name:'網路設備', parentId:null },
+  ],
+  assets: [],
+  transfers: [],
+};
+
+function seedAssets(){
+  const s = [
+    ['MacBook Pro 14"','cat2','Apple','MBP14-M3','C02XJ9K1MD6T','2024-03-12','','c1','d1','pj1','p1','l1','使用中',68900],
+    ['Dell OptiPlex 台式機','cat3','Dell','OptiPlex 7010','DL7010-2211','2023-09-01','','c1','d1','pj1','p3','l2','使用中',24500],
+    ['辦公桌 1.4M','cat5','宜家','IKEA-BEKANT','','2022-05-20','','c1','d2','pj2','p2','l1','使用中',3200],
+    ['人體工學椅','cat6','Herman Miller','Aeron-B','HM-AE-0091','2022-05-20','','c1','d4','pj2','p4','l1','閒置',32000],
+    ['Cisco 交換器 24埠','cat7','Cisco','C9200L-24T','FCW2540L0Q9','2021-11-08','','c1','d1','','p1','l2','維修中',18600],
+    ['ThinkPad X1 Carbon','cat2','Lenovo','X1C-Gen11','PF3X4K2','2024-01-15','','c1','d4','','p4','l1','借出',52000],
+    ['iMac 24"','cat3','Apple','iMac24-M1','C02ZK9L2MD6T','2020-06-10','2025-06-10','c1','d1','pj3','p3','l3','報廢',45900],
+    ['會議室投影機','cat7','Epson','EB-2247U','EP22470091','2023-02-18','','c1','d2','','p2','l1','使用中',15800],
+  ];
+  s.forEach(r=>{
+    db.assets.push({
+      id: uid('a'),
+      code: `AST${String(seq.asset++).padStart(5,'0')}`,
+      name:r[0], categoryId:r[1], brand:r[2], model:r[3], serial:r[4],
+      purchaseDate:r[5], scrapDate:r[6], companyId:r[7], departmentId:r[8],
+      projectId:r[9], custodianId:r[10], locationId:r[11], status:r[12], value:r[13],
+    });
+  });
+}
+
+/* Lookups */
+const byId = (arr,id) => arr.find(x=>x.id===id);
+const companyName = id => byId(db.companies,id)?.name || '';
+const deptName = id => byId(db.departments,id)?.name || '';
+const personName = id => byId(db.people,id)?.name || '';
+const projectName = id => byId(db.projects,id)?.name || '';
+const locationName = id => byId(db.locations,id)?.name || '';
+function categoryLabel(id){
+  const c = byId(db.categories,id);
+  if(!c) return '';
+  if(c.parentId){ const p = byId(db.categories,c.parentId); return p? `${p.name} / ${c.name}` : c.name; }
+  return c.name;
+}
+function deptsOfCompany(companyId){ return db.departments.filter(d=>d.companyId===companyId); }
+
+const STATUS_STYLE = {
+  '使用中':'b-green', '閒置':'b-gray', '維修中':'b-amber', '報廢':'b-red', '借出':'b-blue',
+};
+
+/* =========================================================================
+   APP STATE
+   ========================================================================= */
+const state = {
+  view: 'asset-list',        // asset-list | asset-detail | org | people | projects | locations | categories
+  detailMode: 'view',        // view | edit | new
+  detailAssetId: null,
+  filtersOpen: false,
+  filters: { q:'', category:'', status:'', custodian:'', project:'', location:'' },
+  checked: new Set(),
+  assetTab: 'basic',         // basic | spec | purchase | owner | barcode
+  categoryParentId: null,    // current drill-down level in 資產分類管理
+  page: 1,
+  pageSize: 10,
+};
+
+/* ---------- Pagination helpers (shared by every list view) ---------- */
+function paginate(list){
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total/state.pageSize));
+  if(state.page > totalPages) state.page = totalPages;
+  if(state.page < 1) state.page = 1;
+  const start = (state.page-1)*state.pageSize;
+  return { items: list.slice(start, start+state.pageSize), total, totalPages };
+}
+function renderPaginationControls(total, totalPages){
+  if(total===0) return '';
+  return `
+    <div class="pg-controls">
+      <div class="pg-size">
+        <label>每頁</label>
+        <select onchange="setPageSize(this.value)">
+          ${[10,25,50,100].map(n=>`<option value="${n}" ${state.pageSize==n?'selected':''}>${n}</option>`).join('')}
+        </select>
+        <span>筆</span>
+      </div>
+      <div class="pg-nav">
+        <button class="icon-btn" ${state.page<=1?'disabled':''} onclick="setPage(${state.page-1})" title="上一頁">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <span class="pg-indicator">第 ${state.page} / ${totalPages} 頁</span>
+        <button class="icon-btn" ${state.page>=totalPages?'disabled':''} onclick="setPage(${state.page+1})" title="下一頁">${ICONS.chev}</button>
+      </div>
+    </div>`;
+}
+function setPage(p){ state.page = p; rerenderContent(); }
+function setPageSize(v){ state.pageSize = parseInt(v,10)||10; state.page = 1; rerenderContent(); }
+
+/* =========================================================================
+   RENDER: SHELL
+   ========================================================================= */
+function renderApp(){
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    ${renderSidebar()}
+    <div class="main">
+      ${renderTopbar()}
+      <div class="content" id="content">${renderContent()}</div>
+    </div>
+  `;
+  afterRender();
+  persistData();
+}
+
+function renderSidebar(){
+  const assetOpen = ['asset-list','asset-detail','transfers'].includes(state.view);
+  const sysOpen = ['org','people','projects','locations','categories'].includes(state.view);
+  return `
+  <div class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">${ICONS.box.replace('currentColor','#fff')}</div>
+      <div class="brand-text">
+        <div class="t1">資產管理系統</div>
+        <div class="t2">ASSET&nbsp;HUB</div>
+      </div>
+    </div>
+    <div class="nav">
+      <div class="nav-group ${assetOpen?'open':''}" data-group="asset">
+        <button class="nav-group-btn" onclick="toggleGroup('asset')">
+          <span class="icon">${ICONS.box}</span>
+          <span>資產管理</span>
+          <span class="chev">${ICONS.chev}</span>
+        </button>
+        <div class="nav-sub">
+          <div class="nav-item ${state.view==='asset-list'||state.view==='asset-detail'?'active':''}" onclick="goto('asset-list')">
+            <span class="dot"></span><span>資產清單</span>
+          </div>
+          <div class="nav-item ${state.view==='transfers'?'active':''}" onclick="goto('transfers')">
+            <span class="dot"></span><span>資產移轉紀錄</span>
+          </div>
+        </div>
+      </div>
+      <div class="nav-group ${sysOpen?'open':''}" data-group="sys">
+        <button class="nav-group-btn" onclick="toggleGroup('sys')">
+          <span class="icon">${ICONS.settings}</span>
+          <span>系統管理</span>
+          <span class="chev">${ICONS.chev}</span>
+        </button>
+        <div class="nav-sub">
+          <div class="nav-item ${state.view==='org'?'active':''}" onclick="goto('org')"><span class="dot"></span><span>組織架構</span></div>
+          <div class="nav-item ${state.view==='people'?'active':''}" onclick="goto('people')"><span class="dot"></span><span>人員管理</span></div>
+          <div class="nav-item ${state.view==='projects'?'active':''}" onclick="goto('projects')"><span class="dot"></span><span>專案管理</span></div>
+          <div class="nav-item ${state.view==='locations'?'active':''}" onclick="goto('locations')"><span class="dot"></span><span>地點管理</span></div>
+          <div class="nav-item ${state.view==='categories'?'active':''}" onclick="goto('categories')"><span class="dot"></span><span>資產分類管理</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-foot">
+      <div class="avatar">吳</div>
+      <div class="who"><div class="n">系統管理員</div><div class="r">系統管理員</div></div>
+      <button class="icon-btn" style="margin-left:auto;color:#8AA0C7;" onclick="logout()" title="登出">${ICONS.x}</button>
+    </div>
+  </div>`;
+}
+
+const PAGE_META = {
+  'asset-list':{crumb:'資產管理', title:'資產清單'},
+  'asset-detail':{crumb:'資產管理 / 資產清單', title:'資產內容'},
+  'org':{crumb:'系統管理', title:'組織架構'},
+  'people':{crumb:'系統管理', title:'人員管理'},
+  'projects':{crumb:'系統管理', title:'專案管理'},
+  'locations':{crumb:'系統管理', title:'地點管理'},
+  'categories':{crumb:'系統管理', title:'資產分類管理'},
+  'transfers':{crumb:'資產管理', title:'資產移轉紀錄'},
+};
+
+function renderTopbar(){
+  const meta = PAGE_META[state.view];
+  let title = meta.title;
+  if(state.view==='asset-detail'){
+    title = state.detailMode==='new' ? '新增資產' : (byId(db.assets,state.detailAssetId)?.name || '資產內容');
+  }
+  return `
+  <div class="topbar">
+    <div>
+      <div class="crumbs">${meta.crumb}</div>
+      <h1>${title}</h1>
+    </div>
+  </div>`;
+}
+
+function toggleGroup(name){
+  document.querySelectorAll('.nav-group').forEach(g=>{
+    if(g.dataset.group===name){ g.classList.toggle('open'); }
+  });
+}
+
+function goto(view){
+  state.view = view;
+  state.checked = new Set();
+  state.page = 1;
+  state.categoryParentId = null;
+  if(view==='asset-list') state.filtersOpen = false;
+  renderApp();
+}
+
+function renderContent(){
+  switch(state.view){
+    case 'asset-list': return renderAssetList();
+    case 'asset-detail': return renderAssetDetail();
+    case 'org': return renderOrg();
+    case 'people': return renderPeoplePage();
+    case 'projects': return renderSimpleCrud(PROJECTS_CFG);
+    case 'locations': return renderSimpleCrud(LOCATIONS_CFG);
+    case 'categories': return renderCategoriesPage();
+    case 'transfers': return renderTransfersPage();
+    default: return '';
+  }
+}
+
+function afterRender(){
+  // hook barcode rendering if barcode tab visible
+  if(state.view==='asset-detail' && state.assetTab==='barcode'){
+    drawBarcode();
+  }
+}
+
+/* =========================================================================
+   ASSET LIST
+   ========================================================================= */
+function filteredAssets(){
+  const f = state.filters;
+  return db.assets.filter(a=>{
+    if(f.q){
+      const q = f.q.toLowerCase();
+      if(!(a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q))) return false;
+    }
+    if(f.category && a.categoryId!==f.category) return false;
+    if(f.status && a.status!==f.status) return false;
+    if(f.custodian && a.custodianId!==f.custodian) return false;
+    if(f.project && a.projectId!==f.project) return false;
+    if(f.location && a.locationId!==f.location) return false;
+    return true;
+  });
+}
+
+function renderAssetList(){
+  const filtered = filteredAssets();
+  const { items:list, total, totalPages } = paginate(filtered);
+  const activeFilterCount = Object.entries(state.filters).filter(([k,v])=>v && k!=='q').length;
+
+  return `
+  <div class="helper-note">${ICONS.info}<span>建議先「下載匯入範本」依格式填寫，標示 <span class="req">*</span> 的欄位為必填，匯入時系統會自動檢查每一筆資料。</span></div>
+  <div class="panel">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="search-box">
+          ${ICONS.search}
+          <input type="text" placeholder="搜尋資產名稱或編號…" value="${escAttr(state.filters.q)}" oninput="onSearch(this.value)">
+        </div>
+        <button class="btn ${state.filtersOpen?'btn-primary':''}" onclick="toggleFilters()">
+          ${ICONS.filter}<span>篩選</span>${activeFilterCount?`<span class="badge b-gray" style="margin-left:2px;">${activeFilterCount}</span>`:''}
+        </button>
+      </div>
+      <div class="toolbar-right page-actions">
+        <button class="btn" onclick="printSelected()">${ICONS.printer}<span>列印資產編號</span></button>
+        <button class="btn" onclick="exportCsv()">${ICONS.download}<span>匯出</span></button>
+        <button class="btn" onclick="openImportModal({title:'匯入資產', templateFn:'downloadAssetTemplate', onFile:importCsv})">${ICONS.upload}<span>匯入</span></button>
+        <button class="btn btn-primary" onclick="openAssetNew()">${ICONS.plus}<span>新增資產</span></button>
+      </div>
+    </div>
+
+    <div class="filter-bar ${state.filtersOpen?'open':''}">
+      <div class="f-field">
+        <label>資產分類</label>
+        <select onchange="setFilter('category',this.value)">
+          <option value="">全部分類</option>
+          ${db.categories.map(c=>`<option value="${c.id}" ${state.filters.category===c.id?'selected':''}>${categoryLabel(c.id)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="f-field">
+        <label>狀態</label>
+        <select onchange="setFilter('status',this.value)">
+          <option value="">全部狀態</option>
+          ${Object.keys(STATUS_STYLE).map(s=>`<option value="${s}" ${state.filters.status===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
+      <div class="f-field">
+        <label>保管人</label>
+        <select onchange="setFilter('custodian',this.value)">
+          <option value="">全部人員</option>
+          ${db.people.map(p=>`<option value="${p.id}" ${state.filters.custodian===p.id?'selected':''}>${p.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="f-field">
+        <label>所屬專案</label>
+        <select onchange="setFilter('project',this.value)">
+          <option value="">全部專案</option>
+          ${db.projects.map(p=>`<option value="${p.id}" ${state.filters.project===p.id?'selected':''}>${p.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="f-field">
+        <label>地點</label>
+        <select onchange="setFilter('location',this.value)">
+          <option value="">全部地點</option>
+          ${db.locations.map(l=>`<option value="${l.id}" ${state.filters.location===l.id?'selected':''}>${l.name}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="clearFilters()">清除篩選</button>
+    </div>
+
+    <div class="table-wrap">
+      ${list.length===0 ? renderEmptyState() : `
+      <table>
+        <thead>
+          <tr>
+            <th style="width:38px;"><input type="checkbox" ${list.length && list.every(a=>state.checked.has(a.id))?'checked':''} onchange="toggleAllChecked(this.checked)"></th>
+            <th style="width:70px;">功能</th>
+            <th>資產編號</th>
+            <th>名稱</th>
+            <th>分類</th>
+            <th>保管人</th>
+            <th>所屬專案</th>
+            <th>地點</th>
+            <th>狀態</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${list.map(a=>`
+            <tr>
+              <td><input type="checkbox" ${state.checked.has(a.id)?'checked':''} onchange="toggleChecked('${a.id}',this.checked)"></td>
+              <td>
+                <div class="row-actions">
+                  <button class="icon-btn" title="查看" onclick="openAssetView('${a.id}')">${ICONS.eye}</button>
+                  <button class="icon-btn" title="修改" onclick="openAssetEdit('${a.id}')">${ICONS.edit}</button>
+                </div>
+              </td>
+              <td class="code-cell">${a.code}</td>
+              <td class="name-cell">${escHtml(a.name)}</td>
+              <td class="cell-muted">${categoryLabel(a.categoryId)||'—'}</td>
+              <td>${personName(a.custodianId)||'—'}</td>
+              <td class="cell-muted">${projectName(a.projectId)||'—'}</td>
+              <td class="cell-muted">${locationName(a.locationId)||'—'}</td>
+              <td>${statusBadge(a.status)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`}
+    </div>
+    <div class="table-footer">
+      <span>共 ${total} 筆資產${state.checked.size?`．已勾選 ${state.checked.size} 筆`:''}</span>
+      ${renderPaginationControls(total, totalPages)}
+    </div>
+  </div>`;
+}
+
+function renderEmptyState(){
+  return `<div class="empty-state">
+    ${ICONS.inbox}
+    <div class="e-title">找不到符合條件的資產</div>
+    <div>試試調整篩選條件，或新增一筆資產</div>
+  </div>`;
+}
+
+function statusBadge(s){
+  return `<span class="badge ${STATUS_STYLE[s]||'b-gray'}"><span class="dot"></span>${s}</span>`;
+}
+
+function onSearch(v){ state.filters.q = v; state.page = 1; rerenderContent(); }
+function setFilter(key,val){ state.filters[key]=val; state.page = 1; rerenderContent(); }
+function clearFilters(){ state.filters = { q:state.filters.q, category:'', status:'', custodian:'', project:'', location:'' }; state.page = 1; rerenderContent(); }
+function toggleFilters(){ state.filtersOpen = !state.filtersOpen; rerenderContent(); }
+function toggleChecked(id,val){ val? state.checked.add(id) : state.checked.delete(id); rerenderContent(); }
+function toggleAllChecked(val){
+  const pageItems = paginate(filteredAssets()).items; // only affects rows visible on the current page
+  if(val) pageItems.forEach(a=>state.checked.add(a.id)); else pageItems.forEach(a=>state.checked.delete(a.id));
+  rerenderContent();
+}
+function rerenderContent(){
+  document.getElementById('content').innerHTML = renderContent();
+  afterRender();
+  persistData();
+}
+
+/* ---------- CSV helpers (shared by asset + people import/export) ---------- */
+function csvSafe(v){ v = (v??'').toString(); return /[",\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v; }
+function downloadCsv(rows, filename){
+  const lines = rows.map(r=>r.map(csvSafe).join(','));
+  const blob = new Blob(['\uFEFF'+lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = filename;
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+/** Minimal CSV parser that also handles quoted fields containing commas/newlines. */
+function parseCsv(text){
+  const rows = []; let row = [], field = '', inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){ if(text[i+1] === '"'){ field += '"'; i++; } else { inQuotes = false; } }
+      else field += c;
+    } else {
+      if(c === '"') inQuotes = true;
+      else if(c === ','){ row.push(field); field=''; }
+      else if(c === '\n' || c === '\r'){
+        if(c === '\r' && text[i+1] === '\n') i++;
+        row.push(field); field=''; rows.push(row); row=[];
+      } else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => !(r.length===1 && r[0].trim()===''));
+}
+/** Looks up a reference entity by its display name for a CSV import column. Empty input is allowed (required-ness is checked separately). */
+function findRefByColumn(col, rawValue){
+  const v = (rawValue||'').trim();
+  if(!v) return { id:'', matched:true };
+  const found = col.ref().find(item => col.refLabel(item).trim().toLowerCase() === v.toLowerCase());
+  return found ? { id:found.id, matched:true } : { id:'', matched:false };
+}
+/** Shows a modal listing every row that failed validation; nothing is imported until all rows pass. */
+function showImportErrors(entityLabel, errors){
+  const body = `
+    <div class="helper-note" style="background:var(--danger-soft);color:var(--danger);">${ICONS.info}<span>共 ${errors.length} 筆資料有誤，本次尚未匯入任何資料，請修正 CSV 後再重新上傳。</span></div>
+    <div style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;">
+      ${errors.map(e=>`
+        <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:4px;">第 ${e.line} 列</div>
+          <div style="font-size:12.5px;color:var(--text-soft);">${e.messages.map(m=>escHtml(m)).join('、')}</div>
+        </div>`).join('')}
+    </div>`;
+  openModal({ title:`${entityLabel}匯入失敗`, body, saveLabel:'我知道了', onSave:()=>true });
+}
+
+/** Opens a modal first (template download + file picker) instead of jumping straight to the OS file dialog. */
+function openImportModal(cfg){
+  const body = `
+    <div class="helper-note">${ICONS.info}<span>${cfg.hint || '請先下載範本，依格式填寫後再上傳。標示 * 為必填欄位。'}</span></div>
+    <button type="button" class="btn" style="width:100%;justify-content:center;margin-bottom:18px;" onclick="${cfg.templateFn}()">${ICONS.download}<span>下載匯入範本</span></button>
+    <div class="field">
+      <label>選擇 CSV 檔案 <span class="req">*</span></label>
+      <input type="file" id="import-modal-file" accept=".csv" onchange="document.getElementById('import-modal-filename').textContent = this.files[0] ? this.files[0].name : '尚未選擇檔案';">
+      <div class="field-hint" id="import-modal-filename">尚未選擇檔案</div>
+    </div>`;
+  openModal({
+    title: cfg.title,
+    body,
+    saveLabel: '開始匯入',
+    onSave: ()=>{
+      const input = document.getElementById('import-modal-file');
+      const file = input.files[0];
+      if(!file){ showToast('請先選擇要匯入的 CSV 檔案', true); return false; }
+      cfg.onFile(file);
+      return true;
+    }
+  });
+}
+
+/* ---------- Asset export / template / import ---------- */
+const ASSET_IMPORT_COLUMNS = [
+  { key:'name',        label:'名稱',       required:true },
+  { key:'category',    label:'分類',       required:true,  ref:()=>db.categories, refLabel:c=>categoryLabel(c.id) },
+  { key:'brand',       label:'品牌',       required:false },
+  { key:'model',       label:'型號',       required:false },
+  { key:'serial',      label:'序號',       required:false },
+  { key:'purchaseDate',label:'購買日期(YYYY-MM-DD)', required:true,  date:true },
+  { key:'scrapDate',   label:'報廢日期(YYYY-MM-DD)', required:false, date:true },
+  { key:'company',     label:'所屬公司',   required:true,  ref:()=>db.companies, refLabel:c=>c.name },
+  { key:'department',  label:'部門',       required:false, ref:()=>db.departments, refLabel:d=>d.name },
+  { key:'project',     label:'所屬專案',   required:true,  ref:()=>db.projects, refLabel:p=>p.name },
+  { key:'custodian',   label:'保管人',     required:true,  ref:()=>db.people, refLabel:p=>p.name },
+  { key:'location',    label:'地點',       required:false, ref:()=>db.locations, refLabel:l=>l.name },
+  { key:'status',      label:'狀態',       required:false, choices:()=>Object.keys(STATUS_STYLE) },
+  { key:'value',       label:'財產價值(NT$)', required:false, number:true },
+];
+function downloadAssetTemplate(){
+  const headers = ASSET_IMPORT_COLUMNS.map(c=>c.label+(c.required?'*':''));
+  const example = ['MacBook Pro 14"', categoryLabel(db.categories[1]?.id)||'電腦設備 / 筆記型電腦','Apple','MBP14-M3','C02XXXXXXX','2026-01-15','', companyName('c1')||'總公司', deptName('d1')||'資訊部', db.projects[0]?.name||'ERP系統導入', db.people[0]?.name||'陳志明', db.locations[0]?.name||'總部3樓辦公室','使用中','68900'];
+  downloadCsv([headers, example], `資產匯入範本_${todayStr()}.csv`);
+  showToast('已下載匯入範本');
+}
+function exportCsv(){
+  const rows = filteredAssets();
+  const headers = ['資產編號','名稱','分類','品牌','型號','序號','購買日期','報廢日期','所屬公司','部門','所屬專案','保管人','地點','狀態','財產價值'];
+  const data = rows.map(a=>[
+    a.code, a.name, categoryLabel(a.categoryId), a.brand, a.model, a.serial,
+    a.purchaseDate||'', a.scrapDate||'', companyName(a.companyId), deptName(a.departmentId),
+    projectName(a.projectId), personName(a.custodianId), locationName(a.locationId), a.status,
+    a.value!==undefined && a.value!==null ? a.value : ''
+  ]);
+  downloadCsv([headers, ...data], `資產清單_${todayStr()}.csv`);
+  showToast('已匯出 CSV 檔案');
+}
+function importCsv(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    const rows = parseCsv(e.target.result);
+    if(rows.length<2){ showToast('檔案內沒有可匯入的資料', true); return; }
+    const errors = [], toInsert = [];
+    rows.slice(1).forEach((cols, idx)=>{
+      const lineNo = idx+2, rowErrors = [], rec = {};
+      ASSET_IMPORT_COLUMNS.forEach((col,ci)=>{
+        const raw = (cols[ci]||'').trim();
+        if(col.required && !raw){ rowErrors.push(`「${col.label}」未填寫`); return; }
+        if(col.ref){
+          const { id, matched } = findRefByColumn(col, raw);
+          if(raw && !matched) rowErrors.push(`「${col.label}」找不到符合的資料：${raw}`);
+          rec[col.key] = id;
+        } else if(col.choices){
+          if(raw && !col.choices().includes(raw)) rowErrors.push(`「${col.label}」值不正確：${raw}`);
+          rec[col.key] = raw || '閒置';
+        } else if(col.date){
+          if(raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) rowErrors.push(`「${col.label}」格式需為 YYYY-MM-DD`);
+          rec[col.key] = raw;
+        } else if(col.number){
+          if(raw && (Number.isNaN(Number(raw)) || Number(raw) < 0)) rowErrors.push(`「${col.label}」需為 0 或正數`);
+          rec[col.key] = raw ? Number(raw) : '';
+        } else {
+          rec[col.key] = raw;
+        }
+      });
+      if(rowErrors.length) errors.push({ line:lineNo, messages:rowErrors });
+      else toInsert.push(rec);
+    });
+
+    if(errors.length){ showImportErrors('資產', errors); return; }
+
+    toInsert.forEach(rec=>{
+      db.assets.push({
+        id: uid('a'), code:`AST${String(seq.asset++).padStart(5,'0')}`,
+        name: rec.name, categoryId: rec.category, brand: rec.brand, model: rec.model, serial: rec.serial,
+        purchaseDate: rec.purchaseDate, scrapDate: rec.scrapDate, companyId: rec.company,
+        departmentId: rec.department, projectId: rec.project, custodianId: rec.custodian,
+        locationId: rec.location, status: rec.status || '閒置', value: rec.value,
+      });
+    });
+    state.page = 1;
+    rerenderContent();
+    showToast(`已成功匯入 ${toInsert.length} 筆資產`);
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function printSelected(){
+  const ids = [...state.checked];
+  if(ids.length===0){ showToast('請先勾選要列印的資產', true); return; }
+  const items = ids.map(id=>byId(db.assets,id)).filter(Boolean);
+  const area = document.getElementById('print-area');
+  area.innerHTML = `<div class="label-grid">${items.map(a=>`
+    <div class="label-item">
+      <div class="lname">${escHtml(a.name)}</div>
+      <svg class="pb" data-code="${a.code}"></svg>
+      <div class="lcode">${a.code}</div>
+    </div>`).join('')}</div>`;
+  setTimeout(()=>{
+    area.querySelectorAll('.pb').forEach(svg=>{
+      renderBarcodeSVG(svg, svg.dataset.code, { moduleWidth:1.6, height:38, fontSize:11, margin:4, displayValue:false });
+    });
+    window.print();
+  }, 60);
+}
+
+/* =========================================================================
+   ASSET DETAIL (view / edit / new)
+   ========================================================================= */
+let draftAsset = null; // working copy while editing
+
+function openAssetView(id){ state.detailAssetId=id; state.detailMode='view'; state.assetTab='basic'; state.view='asset-detail'; draftAsset=null; renderApp(); }
+function openAssetEdit(id){ state.detailAssetId=id; state.detailMode='edit'; state.assetTab='basic'; state.view='asset-detail'; draftAsset={...byId(db.assets,id)}; renderApp(); }
+function openAssetNew(){
+  state.detailAssetId=null; state.detailMode='new'; state.assetTab='basic'; state.view='asset-detail';
+  draftAsset = { id:null, code:'（儲存後自動產生）', name:'', categoryId:'', brand:'', model:'', serial:'',
+    purchaseDate:'', scrapDate:'', companyId:'c1', departmentId:'', projectId:'', custodianId:'', locationId:'', status:'閒置', value:'' };
+  renderApp();
+}
+function backToList(){ state.view='asset-list'; renderApp(); }
+function switchToEditFromView(){ state.detailMode='edit'; draftAsset={...byId(db.assets,state.detailAssetId)}; rerenderContent(); }
+function cancelEdit(){
+  if(state.detailMode==='new'){ backToList(); return; }
+  state.detailMode='view'; draftAsset=null; rerenderContent();
+}
+
+function setAssetTab(tab){ state.assetTab = tab; rerenderContent(); }
+
+function updateDraft(key,val){ draftAsset[key]=val; }
+
+function saveAsset(){
+  if(!draftAsset.name || !draftAsset.name.trim()){ showToast('請填寫資產名稱', true); setAssetTab('basic'); return; }
+  if(!draftAsset.categoryId){ showToast('請選擇資產分類', true); setAssetTab('basic'); return; }
+  if(!draftAsset.purchaseDate){ showToast('請填寫購買日期', true); setAssetTab('purchase'); return; }
+  if(!draftAsset.companyId){ showToast('請選擇所屬公司', true); setAssetTab('owner'); return; }
+  if(!draftAsset.projectId){ showToast('請選擇所屬專案', true); setAssetTab('owner'); return; }
+  if(!draftAsset.custodianId){ showToast('請選擇保管人', true); setAssetTab('owner'); return; }
+
+  if(state.detailMode==='new'){
+    const newAsset = {...draftAsset, id: uid('a'), code:`AST${String(seq.asset++).padStart(5,'0')}`};
+    db.assets.push(newAsset);
+    state.detailAssetId = newAsset.id;
+    showToast('資產已新增');
+  } else {
+    const idx = db.assets.findIndex(a=>a.id===draftAsset.id);
+    const original = db.assets[idx];
+    const custodianChanged = original.custodianId !== draftAsset.custodianId;
+    const locationChanged = original.locationId !== draftAsset.locationId;
+    const departmentChanged = original.departmentId !== draftAsset.departmentId;
+    const companyChanged = original.companyId !== draftAsset.companyId;
+    const projectChanged = original.projectId !== draftAsset.projectId;
+    db.assets[idx] = {...draftAsset};
+    if(custodianChanged || locationChanged || departmentChanged || companyChanged || projectChanged){
+      addTransferRecord({
+        assetId: draftAsset.id,
+        fromCustodianId: original.custodianId, toCustodianId: draftAsset.custodianId,
+        fromLocationId: original.locationId, toLocationId: draftAsset.locationId,
+        fromDepartmentId: original.departmentId, toDepartmentId: draftAsset.departmentId,
+        fromCompanyId: original.companyId, toCompanyId: draftAsset.companyId,
+        fromProjectId: original.projectId, toProjectId: draftAsset.projectId,
+        date: todayISODate(), reason:'透過資產內頁修改自動產生', source:'auto',
+      });
+      showToast('資產已儲存，並自動新增一筆移轉紀錄');
+    } else {
+      showToast('資產已儲存');
+    }
+  }
+  state.detailMode='view'; draftAsset=null;
+  rerenderContent();
+}
+
+function deleteAsset(id){
+  confirmDialog('刪除資產', '確定要刪除這筆資產嗎？此操作無法復原。', ()=>{
+    db.assets = db.assets.filter(a=>a.id!==id);
+    closeModal();
+    showToast('資產已刪除');
+    backToList();
+  });
+}
+
+const ASSET_TABS = [
+  { key:'basic', label:'基本資訊', n:1 },
+  { key:'spec', label:'規格資訊', n:2 },
+  { key:'purchase', label:'採購資訊', n:3 },
+  { key:'owner', label:'歸屬資訊', n:4 },
+  { key:'barcode', label:'列印條碼', n:5 },
+];
+
+function renderAssetDetail(){
+  const mode = state.detailMode;
+  const a = mode==='view' ? byId(db.assets,state.detailAssetId) : draftAsset;
+  if(!a){ return renderEmptyState(); }
+  const editable = mode!=='view';
+
+  return `
+  <div class="back-link" onclick="backToList()">${ICONS.arrowLeft}<span>返回資產清單</span></div>
+  <div class="detail-head">
+    <div class="detail-title-row">
+      <h1>${mode==='new' ? '新增資產' : escHtml(a.name || '未命名資產')}</h1>
+      ${mode!=='new' ? statusBadge(a.status) : ''}
+    </div>
+    <div class="page-actions">
+      ${mode==='view' ? `
+        <button class="btn btn-danger" onclick="deleteAsset('${a.id}')">${ICONS.trash}<span>刪除</span></button>
+        <button class="btn btn-primary" onclick="switchToEditFromView()">${ICONS.edit}<span>修改</span></button>
+      ` : `
+        <button class="btn" onclick="cancelEdit()">取消</button>
+        <button class="btn btn-primary" onclick="saveAsset()">${ICONS.check}<span>儲存</span></button>
+      `}
+    </div>
+  </div>
+
+  <div class="detail-grid">
+    <div class="tab-rail">
+      ${ASSET_TABS.map(t=>`
+        <div class="tab-btn ${state.assetTab===t.key?'active':''}" onclick="setAssetTab('${t.key}')">
+          <span class="n">${t.n}</span><span>${t.label}</span>
+        </div>`).join('')}
+    </div>
+    <div>
+      ${renderAssetTabContent(a, editable, mode)}
+    </div>
+  </div>`;
+}
+
+function renderAssetTabContent(a, editable, mode){
+  if(state.assetTab==='basic') return sectionBasic(a, editable, mode);
+  if(state.assetTab==='spec') return sectionSpec(a, editable);
+  if(state.assetTab==='purchase') return sectionPurchase(a, editable);
+  if(state.assetTab==='owner') return sectionOwner(a, editable);
+  if(state.assetTab==='barcode') return sectionBarcode(a);
+  return '';
+}
+
+function fieldView(val, unit){ return `<div class="view-value ${val?'':'empty'}">${val ? escHtml(val)+(unit||'') : '未填寫'}</div>`; }
+
+function sectionBasic(a, editable, mode){
+  return `
+  <div class="panel section-card">
+    <h3>基本資訊</h3>
+    <div class="sub">資產的基本識別資料，編號由系統自動產生</div>
+    <div class="form-grid">
+      <div class="field">
+        <label>資產編號</label>
+        <div class="ro-field">${a.code}</div>
+        <div class="field-hint">${mode==='new' ? '儲存後系統將自動產生唯一編號' : '系統產生，唯一辨識碼，不可修改'}</div>
+      </div>
+      <div class="field">
+        <label>狀態</label>
+        ${editable
+          ? `<select onchange="updateDraft('status',this.value)">${Object.keys(STATUS_STYLE).map(s=>`<option value="${s}" ${a.status===s?'selected':''}>${s}</option>`).join('')}</select>`
+          : fieldView(a.status)}
+      </div>
+      <div class="field full">
+        <label>資產名稱 <span class="req">*</span></label>
+        ${editable
+          ? `<input type="text" value="${escAttr(a.name)}" placeholder="例如：MacBook Pro 14 吋" oninput="updateDraft('name',this.value)">`
+          : fieldView(a.name)}
+      </div>
+      <div class="field full">
+        <label>資產分類 <span class="req">*</span></label>
+        ${editable
+          ? `<select onchange="updateDraft('categoryId',this.value)">
+              <option value="">請選擇分類</option>
+              ${db.categories.map(c=>`<option value="${c.id}" ${a.categoryId===c.id?'selected':''}>${categoryLabel(c.id)}</option>`).join('')}
+            </select>`
+          : fieldView(categoryLabel(a.categoryId))}
+      </div>
+    </div>
+  </div>`;
+}
+
+function sectionSpec(a, editable){
+  return `
+  <div class="panel section-card">
+    <h3>規格資訊</h3>
+    <div class="sub">設備的品牌、型號與序號等硬體規格</div>
+    <div class="form-grid">
+      <div class="field">
+        <label>品牌</label>
+        ${editable ? `<input type="text" value="${escAttr(a.brand)}" oninput="updateDraft('brand',this.value)">` : fieldView(a.brand)}
+      </div>
+      <div class="field">
+        <label>型號</label>
+        ${editable ? `<input type="text" value="${escAttr(a.model)}" oninput="updateDraft('model',this.value)">` : fieldView(a.model)}
+      </div>
+      <div class="field full">
+        <label>序號</label>
+        ${editable ? `<input type="text" value="${escAttr(a.serial)}" oninput="updateDraft('serial',this.value)">` : fieldView(a.serial)}
+      </div>
+    </div>
+  </div>`;
+}
+
+function sectionPurchase(a, editable){
+  return `
+  <div class="panel section-card">
+    <h3>採購資訊</h3>
+    <div class="sub">資產的購買與報廢日期、財產價值</div>
+    <div class="form-grid">
+      <div class="field">
+        <label>購買日期 <span class="req">*</span></label>
+        ${editable ? `<input type="date" value="${a.purchaseDate||''}" onchange="updateDraft('purchaseDate',this.value)">` : fieldView(a.purchaseDate)}
+      </div>
+      <div class="field">
+        <label>報廢日期</label>
+        ${editable ? `<input type="date" value="${a.scrapDate||''}" onchange="updateDraft('scrapDate',this.value)">` : fieldView(a.scrapDate)}
+      </div>
+      <div class="field">
+        <label>財產價值</label>
+        ${editable
+          ? `<input type="number" min="0" step="1" placeholder="新台幣 (NT$)" value="${a.value!==undefined && a.value!==null && a.value!=='' ? a.value : ''}" oninput="updateDraft('value', this.value === '' ? '' : Number(this.value))">`
+          : fieldView(formatCurrency(a.value))}
+        <div class="field-hint">單位：新台幣 (NT$)</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function formatCurrency(v){
+  if(v===undefined || v===null || v==='') return '';
+  const n = Number(v);
+  if(Number.isNaN(n)) return '';
+  return 'NT$ ' + n.toLocaleString('zh-Hant-TW');
+}
+
+function sectionOwner(a, editable){
+  const depts = deptsOfCompany(a.companyId||'');
+  return `
+  <div class="panel section-card">
+    <h3>歸屬資訊</h3>
+    <div class="sub">資產所屬公司、部門、專案與保管人</div>
+    <div class="form-grid">
+      <div class="field">
+        <label>所屬公司 <span class="req">*</span></label>
+        ${editable
+          ? `<select onchange="updateDraft('companyId',this.value); updateDraft('departmentId',''); rerenderContent();">
+              <option value="">請選擇公司</option>
+              ${db.companies.map(c=>`<option value="${c.id}" ${a.companyId===c.id?'selected':''}>${c.name}</option>`).join('')}
+            </select>`
+          : fieldView(companyName(a.companyId))}
+      </div>
+      <div class="field">
+        <label>部門</label>
+        ${editable
+          ? `<select onchange="updateDraft('departmentId',this.value)">
+              <option value="">未指定</option>
+              ${depts.map(d=>`<option value="${d.id}" ${a.departmentId===d.id?'selected':''}>${d.name}</option>`).join('')}
+            </select>`
+          : fieldView(deptName(a.departmentId))}
+      </div>
+      <div class="field">
+        <label>所屬專案 <span class="req">*</span></label>
+        ${editable
+          ? `<select onchange="updateDraft('projectId',this.value)">
+              <option value="">請選擇專案</option>
+              ${db.projects.map(p=>`<option value="${p.id}" ${a.projectId===p.id?'selected':''}>${p.name}</option>`).join('')}
+            </select>`
+          : fieldView(projectName(a.projectId))}
+      </div>
+      <div class="field">
+        <label>保管人 <span class="req">*</span></label>
+        ${editable
+          ? `<select onchange="updateDraft('custodianId',this.value)">
+              <option value="">請選擇保管人</option>
+              ${db.people.map(p=>`<option value="${p.id}" ${a.custodianId===p.id?'selected':''}>${p.name}</option>`).join('')}
+            </select>`
+          : fieldView(personName(a.custodianId))}
+      </div>
+      <div class="field full">
+        <label>地點</label>
+        ${editable
+          ? `<select onchange="updateDraft('locationId',this.value)">
+              <option value="">未指定</option>
+              ${db.locations.map(l=>`<option value="${l.id}" ${a.locationId===l.id?'selected':''}>${l.name}</option>`).join('')}
+            </select>`
+          : fieldView(locationName(a.locationId))}
+      </div>
+    </div>
+  </div>`;
+}
+
+function sectionBarcode(a){
+  if(!a.id){
+    return `<div class="panel section-card"><div class="helper-note">${ICONS.info}<span>請先儲存資產後，系統才會產生條碼。</span></div></div>`;
+  }
+  return `
+  <div class="panel section-card">
+    <h3>列印條碼</h3>
+    <div class="sub">系統依資產編號自動產生 Code128 條碼</div>
+    <div class="barcode-block">
+      <svg id="detail-barcode"></svg>
+      <div class="barcode-meta">${escHtml(a.name)}<br>${a.code}</div>
+      <button class="btn btn-primary" onclick="printOne('${a.id}')">${ICONS.printer}<span>列印此條碼</span></button>
+    </div>
+  </div>`;
+}
+
+function drawBarcode(){
+  const el = document.getElementById('detail-barcode');
+  if(!el) return;
+  const a = state.detailMode==='view' ? byId(db.assets,state.detailAssetId) : draftAsset;
+  if(!a || !a.id) return;
+  renderBarcodeSVG(el, a.code, { moduleWidth:2.2, height:64, fontSize:14, margin:10, displayValue:true });
+}
+
+function printOne(id){
+  state.checked = new Set([id]);
+  printSelected();
+}
+
+/* =========================================================================
+   系統管理：組織架構
+   ========================================================================= */
+function renderOrg(){
+  return `
+  <div class="helper-note">${ICONS.info}<span>組織架構用於資產「歸屬資訊」中所屬公司與部門的選項來源。</span></div>
+  <div class="crud-header">
+    <div></div>
+    <button class="btn btn-primary" onclick="openCompanyModal()">${ICONS.plus}<span>新增公司</span></button>
+  </div>
+  ${db.companies.map(c=>`
+    <div class="panel tree-card">
+      <div class="tree-company">
+        <div class="name">${ICONS.building}<span>${escHtml(c.name)}</span></div>
+        <div class="row-actions">
+          <button class="btn btn-sm" onclick="openDeptModal('${c.id}')">${ICONS.plus}<span>新增部門</span></button>
+          <button class="icon-btn" onclick="openCompanyModal('${c.id}')">${ICONS.edit}</button>
+          <button class="icon-btn" onclick="deleteCompany('${c.id}')">${ICONS.trash}</button>
+        </div>
+      </div>
+      <div class="chip-row">
+        ${deptsOfCompany(c.id).map(d=>`
+          <span class="chip">${escHtml(d.name)}
+            <button onclick="deleteDept('${d.id}')" title="刪除部門">${ICONS.x}</button>
+          </span>`).join('') || `<span class="cell-muted">尚未建立部門</span>`}
+      </div>
+    </div>
+  `).join('')}`;
+}
+
+function openCompanyModal(id){
+  const c = id ? byId(db.companies,id) : null;
+  openModal({
+    title: c ? '編輯公司' : '新增公司',
+    body: `<div class="field"><label>公司名稱 <span class="req">*</span></label><input id="m-company-name" type="text" value="${escAttr(c?.name||'')}" placeholder="例如：總公司"></div>`,
+    onSave: ()=>{
+      const name = document.getElementById('m-company-name').value.trim();
+      if(!name){ showToast('請輸入公司名稱', true); return false; }
+      if(c){ c.name = name; } else { db.companies.push({id:uid('c'), name}); }
+      rerenderContent();
+      showToast(c ? '公司已更新' : '公司已新增');
+      return true;
+    }
+  });
+}
+function deleteCompany(id){
+  confirmDialog('刪除公司', '刪除公司將一併刪除其所有部門，確定要繼續嗎？', ()=>{
+    db.departments = db.departments.filter(d=>d.companyId!==id);
+    db.companies = db.companies.filter(c=>c.id!==id);
+    closeModal(); rerenderContent(); showToast('公司已刪除');
+  });
+}
+function openDeptModal(companyId){
+  openModal({
+    title: '新增部門',
+    body: `<div class="field"><label>部門名稱 <span class="req">*</span></label><input id="m-dept-name" type="text" placeholder="例如：資訊部"></div>`,
+    onSave: ()=>{
+      const name = document.getElementById('m-dept-name').value.trim();
+      if(!name){ showToast('請輸入部門名稱', true); return false; }
+      db.departments.push({id:uid('d'), name, companyId});
+      rerenderContent(); showToast('部門已新增'); return true;
+    }
+  });
+}
+function deleteDept(id){
+  confirmDialog('刪除部門', '確定要刪除此部門嗎？', ()=>{
+    db.departments = db.departments.filter(d=>d.id!==id);
+    closeModal(); rerenderContent(); showToast('部門已刪除');
+  });
+}
+
+/* =========================================================================
+   系統管理：通用簡易 CRUD（專案 / 地點）— 人員與分類另有專屬頁面
+   ========================================================================= */
+const PROJECTS_CFG = {
+  key:'projects', title:'專案管理', addLabel:'新增專案',
+  columns:[
+    {label:'專案名稱', render:p=>`<span class="name-cell">${escHtml(p.name)}</span>`},
+    {label:'專案代碼', render:p=>`<span class="code-cell">${p.code||'—'}</span>`},
+    {label:'負責人', render:p=>personName(p.ownerId)||'—'},
+    {label:'狀態', render:p=>`<span class="badge ${p.status==='進行中'?'b-blue':'b-gray'}"><span class="dot"></span>${p.status}</span>`},
+  ],
+  fields:[
+    {key:'name', label:'專案名稱', type:'text', required:true},
+    {key:'code', label:'專案代碼', type:'text'},
+    {key:'ownerId', label:'負責人', type:'select', options:()=>db.people.map(p=>({value:p.id,label:p.name}))},
+    {key:'status', label:'狀態', type:'select', options:()=>[{value:'進行中',label:'進行中'},{value:'已結案',label:'已結案'}], default:'進行中'},
+  ],
+};
+const LOCATIONS_CFG = {
+  key:'locations', title:'地點管理', addLabel:'新增地點',
+  columns:[
+    {label:'地點名稱', render:l=>`<span class="name-cell">${escHtml(l.name)}</span>`},
+    {label:'地點代碼', render:l=>`<span class="code-cell">${l.code||'—'}</span>`},
+  ],
+  fields:[
+    {key:'name', label:'地點名稱', type:'text', required:true},
+    {key:'code', label:'地點代碼', type:'text'},
+  ],
+};
+function renderSimpleCrud(cfg){
+  const allRows = db[cfg.key];
+  const { items, total, totalPages } = paginate(allRows);
+  return `
+  <div class="panel">
+    <div class="toolbar">
+      <div class="toolbar-left"><span class="cell-muted">共 ${total} 筆資料</span></div>
+      <div class="toolbar-right">
+        <button class="btn btn-primary" onclick="openCrudModal('${cfg.key}')">${ICONS.plus}<span>${cfg.addLabel}</span></button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      ${items.length===0 ? renderEmptyState() : `
+      <table>
+        <thead><tr>
+          ${cfg.columns.map(c=>`<th>${c.label}</th>`).join('')}
+          <th style="width:90px;">功能</th>
+        </tr></thead>
+        <tbody>
+          ${items.map(r=>`
+            <tr>
+              ${cfg.columns.map(c=>`<td>${c.render(r)}</td>`).join('')}
+              <td>
+                <div class="row-actions">
+                  <button class="icon-btn" title="編輯" onclick="openCrudModal('${cfg.key}','${r.id}')">${ICONS.edit}</button>
+                  <button class="icon-btn" title="刪除" onclick="deleteCrudRow('${cfg.key}','${r.id}')">${ICONS.trash}</button>
+                </div>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`}
+    </div>
+    <div class="table-footer">
+      <span>共 ${total} 筆</span>
+      ${renderPaginationControls(total, totalPages)}
+    </div>
+  </div>`;
+}
+
+const CFG_MAP = { projects:PROJECTS_CFG, locations:LOCATIONS_CFG };
+
+/* =========================================================================
+   系統管理：人員管理（含公司/部門連動選單、CSV 匯入）
+   ========================================================================= */
+const PEOPLE_IMPORT_COLUMNS = [
+  { key:'name',       label:'姓名',     required:true },
+  { key:'company',    label:'所屬公司', required:true,  ref:()=>db.companies, refLabel:c=>c.name },
+  { key:'department', label:'部門',     required:false, ref:()=>db.departments, refLabel:d=>d.name },
+  { key:'email',      label:'Email',    required:false },
+  { key:'phone',      label:'電話',     required:false },
+  { key:'status',     label:'狀態',     required:false, choices:()=>['在職','離職'] },
+];
+function downloadPeopleTemplate(){
+  const headers = PEOPLE_IMPORT_COLUMNS.map(c=>c.label+(c.required?'*':''));
+  const example = ['陳志明', companyName('c1')||'總公司', deptName('d1')||'資訊部', 'name@example.com', '0912-345-678', '在職'];
+  downloadCsv([headers, example], `人員匯入範本_${todayStr()}.csv`);
+  showToast('已下載匯入範本');
+}
+function importPeopleCsv(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    const rows = parseCsv(e.target.result);
+    if(rows.length<2){ showToast('檔案內沒有可匯入的資料', true); return; }
+    const errors = [], toInsert = [];
+    rows.slice(1).forEach((cols, idx)=>{
+      const lineNo = idx+2, rowErrors = [], rec = {};
+      PEOPLE_IMPORT_COLUMNS.forEach((col,ci)=>{
+        const raw = (cols[ci]||'').trim();
+        if(col.required && !raw){ rowErrors.push(`「${col.label}」未填寫`); return; }
+        if(col.ref){
+          const { id, matched } = findRefByColumn(col, raw);
+          if(raw && !matched) rowErrors.push(`「${col.label}」找不到符合的資料：${raw}`);
+          rec[col.key] = id;
+        } else if(col.choices){
+          if(raw && !col.choices().includes(raw)) rowErrors.push(`「${col.label}」值不正確：${raw}`);
+          rec[col.key] = raw || '在職';
+        } else {
+          rec[col.key] = raw;
+        }
+      });
+      if(rowErrors.length) errors.push({ line:lineNo, messages:rowErrors });
+      else toInsert.push(rec);
+    });
+
+    if(errors.length){ showImportErrors('人員', errors); return; }
+
+    toInsert.forEach(rec=>{
+      db.people.push({
+        id: uid('p'), name: rec.name, companyId: rec.company, departmentId: rec.department,
+        email: rec.email, phone: rec.phone, status: rec.status || '在職',
+      });
+    });
+    state.page = 1;
+    rerenderContent();
+    showToast(`已成功匯入 ${toInsert.length} 筆人員`);
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function renderPeoplePage(){
+  const { items, total, totalPages } = paginate(db.people);
+  return `
+  <div class="helper-note">${ICONS.info}<span>建議先「下載匯入範本」依格式填寫，標示 <span class="req">*</span> 的欄位為必填。</span></div>
+  <div class="panel">
+    <div class="toolbar">
+      <div class="toolbar-left"><span class="cell-muted">共 ${total} 筆資料</span></div>
+      <div class="toolbar-right">
+        <button class="btn" onclick="openImportModal({title:'匯入人員', templateFn:'downloadPeopleTemplate', onFile:importPeopleCsv})">${ICONS.upload}<span>匯入</span></button>
+        <button class="btn btn-primary" onclick="openPersonModal()">${ICONS.plus}<span>新增人員</span></button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      ${items.length===0 ? renderEmptyState() : `
+      <table>
+        <thead><tr>
+          <th>姓名</th><th>所屬公司</th><th>部門</th><th>Email</th><th>電話</th><th>狀態</th><th style="width:90px;">功能</th>
+        </tr></thead>
+        <tbody>
+          ${items.map(p=>`
+            <tr>
+              <td class="name-cell">${escHtml(p.name)}</td>
+              <td class="cell-muted">${companyName(p.companyId)||'—'}</td>
+              <td class="cell-muted">${deptName(p.departmentId)||'—'}</td>
+              <td>${p.email||'—'}</td>
+              <td>${p.phone||'—'}</td>
+              <td><span class="badge ${p.status==='在職'?'b-green':'b-gray'}"><span class="dot"></span>${p.status}</span></td>
+              <td>
+                <div class="row-actions">
+                  <button class="icon-btn" title="編輯" onclick="openPersonModal('${p.id}')">${ICONS.edit}</button>
+                  <button class="icon-btn" title="刪除" onclick="deletePerson('${p.id}')">${ICONS.trash}</button>
+                </div>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`}
+    </div>
+    <div class="table-footer">
+      <span>共 ${total} 筆</span>
+      ${renderPaginationControls(total, totalPages)}
+    </div>
+  </div>`;
+}
+
+function personDeptOptions(companyId, selectedId){
+  const depts = deptsOfCompany(companyId);
+  return `<option value="">未指定</option>` + depts.map(d=>`<option value="${d.id}" ${selectedId===d.id?'selected':''}>${d.name}</option>`).join('');
+}
+function onPersonCompanyChange(companyId){
+  const sel = document.getElementById('m-p-department');
+  if(sel) sel.innerHTML = personDeptOptions(companyId, '');
+}
+function openPersonModal(id){
+  const p = id ? byId(db.people, id) : null;
+  const initialCompanyId = p ? p.companyId : (db.companies[0]?.id || '');
+  const body = `
+    <div class="field"><label>姓名 <span class="req">*</span></label><input id="m-p-name" type="text" value="${escAttr(p?.name||'')}"></div>
+    <div class="field"><label>所屬公司 <span class="req">*</span></label>
+      <select id="m-p-company" onchange="onPersonCompanyChange(this.value)">
+        <option value="">請選擇公司</option>
+        ${db.companies.map(c=>`<option value="${c.id}" ${initialCompanyId===c.id?'selected':''}>${c.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>部門</label>
+      <select id="m-p-department">${personDeptOptions(initialCompanyId, p?.departmentId)}</select>
+    </div>
+    <div class="field"><label>Email</label><input id="m-p-email" type="email" value="${escAttr(p?.email||'')}"></div>
+    <div class="field"><label>電話</label><input id="m-p-phone" type="text" value="${escAttr(p?.phone||'')}"></div>
+    <div class="field"><label>狀態</label>
+      <select id="m-p-status">
+        <option value="在職" ${((p?.status||'在職')==='在職')?'selected':''}>在職</option>
+        <option value="離職" ${(p?.status==='離職')?'selected':''}>離職</option>
+      </select>
+    </div>`;
+  openModal({
+    title: p ? '編輯人員' : '新增人員',
+    body,
+    onSave: ()=>{
+      const name = document.getElementById('m-p-name').value.trim();
+      const companyId = document.getElementById('m-p-company').value;
+      if(!name){ showToast('請輸入姓名', true); return false; }
+      if(!companyId){ showToast('請選擇所屬公司', true); return false; }
+      const data = {
+        name, companyId,
+        departmentId: document.getElementById('m-p-department').value,
+        email: document.getElementById('m-p-email').value.trim(),
+        phone: document.getElementById('m-p-phone').value.trim(),
+        status: document.getElementById('m-p-status').value,
+      };
+      if(p){ Object.assign(p, data); } else { db.people.push({id:uid('p'), ...data}); }
+      state.page = 1;
+      rerenderContent();
+      showToast(p ? '人員已更新' : '人員已新增');
+      return true;
+    }
+  });
+}
+function deletePerson(id){
+  confirmDialog('刪除人員', '確定要刪除這位人員嗎？', ()=>{
+    db.people = db.people.filter(p=>p.id!==id);
+    closeModal(); state.page = 1; rerenderContent(); showToast('人員已刪除');
+  });
+}
+
+/* =========================================================================
+   系統管理：資產分類管理（先顯示大分類，點擊分類名稱才進入下一層）
+   ========================================================================= */
+function renderCategoriesPage(){
+  const parentId = state.categoryParentId;
+  const levelItems = db.categories.filter(c => (c.parentId||null) === (parentId||null));
+  const { items, total, totalPages } = paginate(levelItems);
+  return `
+  <div class="helper-note">${ICONS.info}<span>先顯示大分類，點擊分類名稱可進入下一層查看或建立子分類。</span></div>
+  <div class="crud-header">
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;">${buildCategoryBreadcrumb(parentId)}</div>
+    <button class="btn btn-primary" onclick="openCategoryModal(null,'${parentId||''}')">${ICONS.plus}<span>${parentId ? '新增子分類' : '新增分類'}</span></button>
+  </div>
+  <div class="panel">
+    <div class="table-wrap">
+      ${items.length===0 ? renderEmptyState() : `
+      <table>
+        <thead><tr><th>分類名稱</th><th>子分類數</th><th style="width:110px;">功能</th></tr></thead>
+        <tbody>
+          ${items.map(c=>{
+            const childCount = db.categories.filter(x=>x.parentId===c.id).length;
+            return `
+            <tr>
+              <td><span class="name-cell" style="cursor:pointer;color:var(--accent);" onclick="enterCategory('${c.id}')">${escHtml(c.name)}</span></td>
+              <td class="cell-muted">${childCount ? `${childCount} 項` : '—'}</td>
+              <td>
+                <div class="row-actions">
+                  <button class="icon-btn" title="編輯" onclick="openCategoryModal('${c.id}')">${ICONS.edit}</button>
+                  <button class="icon-btn" title="刪除" onclick="deleteCategory('${c.id}')">${ICONS.trash}</button>
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`}
+    </div>
+    <div class="table-footer">
+      <span>共 ${total} 項</span>
+      ${renderPaginationControls(total, totalPages)}
+    </div>
+  </div>`;
+}
+function buildCategoryBreadcrumb(parentId){
+  const chain = [];
+  let cur = parentId ? byId(db.categories, parentId) : null;
+  while(cur){ chain.unshift(cur); cur = cur.parentId ? byId(db.categories, cur.parentId) : null; }
+  let html = `<span style="cursor:pointer;font-weight:700;${!parentId?'color:var(--text);':'color:var(--accent);'}" onclick="enterCategory(null)">全部分類</span>`;
+  chain.forEach((c,i)=>{
+    const isLast = i===chain.length-1;
+    html += `<span class="cell-muted">/</span><span style="cursor:pointer;font-weight:700;${isLast?'color:var(--text);':'color:var(--accent);'}" onclick="enterCategory('${c.id}')">${escHtml(c.name)}</span>`;
+  });
+  return html;
+}
+function enterCategory(id){ state.categoryParentId = id; state.page = 1; rerenderContent(); }
+function openCategoryModal(id, parentIdForNew){
+  const c = id ? byId(db.categories, id) : null;
+  openModal({
+    title: c ? '編輯分類' : '新增分類',
+    body: `<div class="field"><label>分類名稱 <span class="req">*</span></label><input id="m-cat-name" type="text" value="${escAttr(c?.name||'')}"></div>`,
+    onSave: ()=>{
+      const name = document.getElementById('m-cat-name').value.trim();
+      if(!name){ showToast('請輸入分類名稱', true); return false; }
+      if(c){ c.name = name; }
+      else { db.categories.push({ id:uid('cat'), name, parentId: parentIdForNew || null }); }
+      rerenderContent();
+      showToast(c ? '分類已更新' : '分類已新增');
+      return true;
+    }
+  });
+}
+function deleteCategory(id){
+  confirmDialog('刪除分類', '刪除此分類將一併刪除其所有子分類，確定要繼續嗎？', ()=>{
+    const toDelete = new Set([id]);
+    let changed = true;
+    while(changed){
+      changed = false;
+      db.categories.forEach(c=>{ if(c.parentId && toDelete.has(c.parentId) && !toDelete.has(c.id)){ toDelete.add(c.id); changed = true; } });
+    }
+    db.categories = db.categories.filter(c=>!toDelete.has(c.id));
+    closeModal();
+    if(toDelete.has(state.categoryParentId)) state.categoryParentId = null;
+    state.page = 1;
+    rerenderContent();
+    showToast('分類已刪除');
+  });
+}
+
+/* =========================================================================
+   資產管理：資產移轉紀錄
+   不可修改、不可刪除的稽核紀錄。新增方式有兩種：
+   1) 在此頁手動新增（保管人／地點）
+   2) 在資產內頁「修改」時，只要保管人／地點／部門有變動，儲存時系統自動補一筆
+   ========================================================================= */
+function todayISODate(){ const d=new Date(); return d.toISOString().slice(0,10); }
+
+/** Shared writer for both manual and system-generated transfer records. */
+function addTransferRecord({ assetId, fromCustodianId, toCustodianId, fromLocationId, toLocationId, fromDepartmentId, toDepartmentId, fromCompanyId, toCompanyId, fromProjectId, toProjectId, date, reason, source }){
+  db.transfers.unshift({
+    id: uid('t'), assetId,
+    fromCustodianId: fromCustodianId||'', toCustodianId: toCustodianId||'',
+    fromLocationId: fromLocationId||'', toLocationId: toLocationId||'',
+    fromDepartmentId: fromDepartmentId||'', toDepartmentId: toDepartmentId||'',
+    fromCompanyId: fromCompanyId||'', toCompanyId: toCompanyId||'',
+    fromProjectId: fromProjectId||'', toProjectId: toProjectId||'',
+    date: date || todayISODate(), reason: reason||'', source: source||'manual',
+  });
+}
+
+function renderTransfersPage(){
+  const { items, total, totalPages } = paginate(db.transfers);
+  return `
+  <div class="helper-note">${ICONS.info}<span>移轉紀錄一律不可修改或刪除，作為稽核佐證。除了在此手動新增，只要在資產內頁「歸屬資訊」的公司、部門、專案、保管人、地點任一欄位有異動並儲存，系統也會自動補上一筆。</span></div>
+  <div class="panel">
+    <div class="toolbar">
+      <div class="toolbar-left"><span class="cell-muted">共 ${total} 筆紀錄</span></div>
+      <div class="toolbar-right">
+        <button class="btn btn-primary" onclick="openTransferModal()">${ICONS.plus}<span>新增移轉紀錄</span></button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      ${items.length===0 ? renderEmptyState() : `
+      <table>
+        <thead><tr>
+          <th>日期</th><th>資產</th><th>轉出人</th><th>保管人</th><th>公司變更</th><th>部門變更</th><th>專案變更</th><th>地點變更</th><th>原因</th><th>來源</th>
+        </tr></thead>
+        <tbody>
+          ${items.map(t=>{
+            const asset = byId(db.assets, t.assetId);
+            const locChanged = t.fromLocationId !== t.toLocationId;
+            const deptChanged = t.fromDepartmentId !== t.toDepartmentId;
+            const companyChanged = t.fromCompanyId !== t.toCompanyId;
+            const projectChanged = t.fromProjectId !== t.toProjectId;
+            return `
+            <tr>
+              <td class="cell-muted">${t.date||'—'}</td>
+              <td>
+                <div class="name-cell">${asset ? escHtml(asset.name) : '（資產已刪除）'}</div>
+                <div class="code-cell">${asset ? asset.code : ''}</div>
+              </td>
+              <td>${personName(t.fromCustodianId)||'—'}</td>
+              <td>${personName(t.toCustodianId)||'—'}</td>
+              <td class="cell-muted">${companyChanged ? `${companyName(t.fromCompanyId)||'未指定'} → ${companyName(t.toCompanyId)||'未指定'}` : '未變更'}</td>
+              <td class="cell-muted">${deptChanged ? `${deptName(t.fromDepartmentId)||'未指定'} → ${deptName(t.toDepartmentId)||'未指定'}` : '未變更'}</td>
+              <td class="cell-muted">${projectChanged ? `${projectName(t.fromProjectId)||'未指定'} → ${projectName(t.toProjectId)||'未指定'}` : '未變更'}</td>
+              <td class="cell-muted">${locChanged ? `${locationName(t.fromLocationId)||'未指定'} → ${locationName(t.toLocationId)||'未指定'}` : '未變更'}</td>
+              <td class="cell-muted">${t.reason ? escHtml(t.reason) : '—'}</td>
+              <td>${t.source==='auto' ? `<span class="badge b-blue"><span class="dot"></span>系統自動</span>` : `<span class="badge b-gray"><span class="dot"></span>手動新增</span>`}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`}
+    </div>
+    <div class="table-footer">
+      <span>共 ${total} 筆</span>
+      ${renderPaginationControls(total, totalPages)}
+    </div>
+  </div>`;
+}
+
+function onTransferAssetChange(assetId){
+  const asset = byId(db.assets, assetId);
+  const fromEl = document.getElementById('m-t-from-display');
+  const locEl = document.getElementById('m-t-fromloc-display');
+  if(!fromEl || !locEl) return;
+  fromEl.textContent = asset ? (personName(asset.custodianId) || '尚未指定保管人') : '請先選擇資產';
+  locEl.textContent = asset ? (locationName(asset.locationId) || '尚未指定地點') : '請先選擇資產';
+}
+
+function openTransferModal(){
+  const body = `
+    <div class="field">
+      <label>轉出的資產 <span class="req">*</span></label>
+      <select id="m-t-asset" onchange="onTransferAssetChange(this.value)">
+        <option value="">請選擇資產</option>
+        ${db.assets.map(a=>`<option value="${a.id}">${a.code} - ${escHtml(a.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>轉出人（原保管人）</label>
+        <div class="ro-field" id="m-t-from-display" style="font-family:inherit;font-weight:600;">請先選擇資產</div>
+      </div>
+      <div class="field">
+        <label>保管人（接收人） <span class="req">*</span></label>
+        <select id="m-t-to">
+          <option value="">請選擇保管人</option>
+          ${db.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>原地點</label>
+        <div class="ro-field" id="m-t-fromloc-display" style="font-family:inherit;font-weight:600;">請先選擇資產</div>
+      </div>
+      <div class="field">
+        <label>新地點</label>
+        <select id="m-t-newloc">
+          <option value="">維持原地點</option>
+          ${db.locations.map(l=>`<option value="${l.id}">${l.name}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>日期 <span class="req">*</span></label><input id="m-t-date" type="date" value="${todayISODate()}"></div>
+    <div class="field"><label>原因</label><textarea id="m-t-reason" rows="3" placeholder="例如：部門調動、設備借出、汰換更新…"></textarea></div>
+    <div class="field-hint">送出後這筆紀錄無法修改或刪除，請確認資料無誤。</div>`;
+
+  openModal({
+    title: '新增資產移轉紀錄',
+    body,
+    onSave: ()=>{
+      const assetId = document.getElementById('m-t-asset').value;
+      const toCustodianId = document.getElementById('m-t-to').value;
+      const newLocationId = document.getElementById('m-t-newloc').value;
+      const date = document.getElementById('m-t-date').value;
+      const reason = document.getElementById('m-t-reason').value.trim();
+      if(!assetId){ showToast('請選擇要移轉的資產', true); return false; }
+      if(!toCustodianId){ showToast('請選擇接收的保管人', true); return false; }
+      if(!date){ showToast('請填寫移轉日期', true); return false; }
+
+      const asset = byId(db.assets, assetId);
+      addTransferRecord({
+        assetId,
+        fromCustodianId: asset.custodianId, toCustodianId,
+        fromLocationId: asset.locationId, toLocationId: newLocationId || asset.locationId,
+        fromDepartmentId: asset.departmentId, toDepartmentId: asset.departmentId, // manual form only changes custodian/location
+        fromCompanyId: asset.companyId, toCompanyId: asset.companyId,
+        fromProjectId: asset.projectId, toProjectId: asset.projectId,
+        date, reason, source:'manual',
+      });
+      asset.custodianId = toCustodianId;
+      if(newLocationId) asset.locationId = newLocationId;
+
+      state.page = 1;
+      rerenderContent();
+      showToast('已新增移轉紀錄，資產保管人已更新');
+      return true;
+    }
+  });
+}
+
+function openCrudModal(key, id){
+  const cfg = CFG_MAP[key];
+  const row = id ? byId(db[key], id) : null;
+  const bodyHtml = cfg.fields.map(f=>{
+    const val = row ? row[f.key] : (f.default!==undefined ? f.default : '');
+    if(f.type==='select'){
+      const opts = typeof f.options==='function' ? f.options(id) : f.options;
+      return `<div class="field">
+        <label>${f.label}${f.required?' <span class="req">*</span>':''}</label>
+        <select id="m-f-${f.key}">
+          <option value="">${f.allowEmpty || '請選擇'}</option>
+          ${opts.map(o=>`<option value="${o.value}" ${val===o.value?'selected':''}>${o.label}</option>`).join('')}
+        </select>
+      </div>`;
+    }
+    return `<div class="field">
+      <label>${f.label}${f.required?' <span class="req">*</span>':''}</label>
+      <input id="m-f-${f.key}" type="${f.type}" value="${escAttr(val||'')}">
+    </div>`;
+  }).join('');
+
+  openModal({
+    title: row ? `編輯${cfg.title.replace('管理','')}` : cfg.addLabel,
+    body: bodyHtml,
+    onSave: ()=>{
+      const data = {};
+      for(const f of cfg.fields){
+        const v = document.getElementById(`m-f-${f.key}`).value;
+        if(f.required && !v.trim()){ showToast(`請填寫${f.label}`, true); return false; }
+        data[f.key] = v;
+      }
+      if(row){ Object.assign(row, data); }
+      else { db[key].push({id:uid(key[0]), ...data}); }
+      rerenderContent();
+      showToast(row ? '已更新' : '已新增');
+      return true;
+    }
+  });
+}
+function deleteCrudRow(key,id){
+  confirmDialog('刪除資料', '確定要刪除這筆資料嗎？', ()=>{
+    db[key] = db[key].filter(r=>r.id!==id);
+    closeModal(); rerenderContent(); showToast('已刪除');
+  });
+}
+
+/* =========================================================================
+   MODAL / TOAST / CONFIRM helpers
+   ========================================================================= */
+function openModal({title, body, onSave, saveLabel}){
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-overlay show" id="modal-overlay" onmousedown="if(event.target.id==='modal-overlay')closeModal()">
+      <div class="modal">
+        <div class="modal-head"><h3>${title}</h3><button class="icon-btn" onclick="closeModal()">${ICONS.x}</button></div>
+        <div class="modal-body">${body}</div>
+        <div class="modal-foot">
+          <button class="btn" onclick="closeModal()">取消</button>
+          <button class="btn btn-primary" id="modal-save-btn">${saveLabel||'儲存'}</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('modal-save-btn').onclick = ()=>{ const ok = onSave(); if(ok!==false) closeModal(); };
+}
+function closeModal(){ document.getElementById('modal-root').innerHTML=''; }
+
+function confirmDialog(title, msg, onConfirm){
+  openModal({
+    title, body:`<p style="margin:0;font-size:13.5px;color:var(--text-soft);line-height:1.6;">${msg}</p>`,
+    saveLabel:'確定刪除',
+    onSave: ()=>{ onConfirm(); return false; }
+  });
+  // recolor confirm button to danger
+  const btn = document.getElementById('modal-save-btn');
+  if(btn){ btn.style.background='var(--danger)'; btn.style.borderColor='var(--danger)'; }
+}
+
+let toastTimer=null;
+function showToast(msg, isError){
+  const t = document.getElementById('toast');
+  t.innerHTML = `${isError ? ICONS.x : ICONS.check}<span>${msg}</span>`;
+  t.style.color = '#fff';
+  const icon = t.querySelector('svg'); if(icon) icon.style.color = isError ? '#F87171' : 'var(--accent-2)';
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+
+/* =========================================================================
+   UTIL
+   ========================================================================= */
+function escHtml(s){ return (s??'').toString().replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function escAttr(s){ return escHtml(s); }
+function todayStr(){ const d=new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; }
+
+/* =========================================================================
+   PERSISTENCE — auto-save to a shared Firestore document so a refresh
+   (or anyone else opening the same URL) doesn't lose data. This file is
+   self-hosted, so it uses a real backend (Firebase) instead of the
+   Claude-artifact-only window.storage API.
+   NOTE: everyone who opens this page reads/writes the same document —
+   by design for a shared, multi-user asset system.
+   ========================================================================= */
+let saveTimer = null;
+let saveIndicatorTimer = null;
+
+function persistData(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async ()=>{
+    try{
+      await fbDocRef.set({
+        payload: JSON.stringify({ db, seq }),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      flashSaveIndicator('已儲存');
+    }catch(e){
+      console.error('Firestore save failed', e);
+      flashSaveIndicator('儲存失敗，變更僅保留在此分頁', true);
+    }
+  }, 450);
+}
+
+function flashSaveIndicator(msg, isError){
+  const el = document.getElementById('save-indicator');
+  if(!el) return;
+  el.textContent = msg;
+  el.classList.toggle('is-error', !!isError);
+  el.classList.add('show');
+  clearTimeout(saveIndicatorTimer);
+  saveIndicatorTimer = setTimeout(()=>el.classList.remove('show'), 1600);
+}
+
+async function loadData(){
+  try{
+    const snap = await fbDocRef.get();
+    if(snap.exists && snap.data().payload){
+      const parsed = JSON.parse(snap.data().payload);
+      if(parsed.db){
+        Object.keys(db).forEach(k=>{ db[k] = parsed.db[k] !== undefined ? parsed.db[k] : db[k]; });
+      }
+      if(parsed.seq){ Object.assign(seq, parsed.seq); }
+    } else {
+      seedAssets();
+    }
+  }catch(e){
+    console.error('Firestore load failed, using sample data', e);
+    if(db.assets.length===0) seedAssets();
+  }
+  renderApp();
+}
+
+/* =========================================================================
+   AUTH — shared-password login gate, backed by Firebase Authentication.
+   Firestore rules require request.auth != null, so without signing in here
+   the database itself is unreadable — this isn't just a UI-level lock.
+   ========================================================================= */
+const SHARED_LOGIN_EMAIL = 'team@liyao-111e7.local'; // must match the user created in Firebase Console > Authentication
+
+function submitPassword(){
+  const pwd = document.getElementById('auth-password').value;
+  const errEl = document.getElementById('auth-error');
+  errEl.textContent = '';
+  if(!pwd){ errEl.textContent = '請輸入密碼'; return; }
+  firebase.auth().signInWithEmailAndPassword(SHARED_LOGIN_EMAIL, pwd)
+    .catch(()=>{ errEl.textContent = '密碼錯誤，請再試一次'; });
+}
+
+function logout(){
+  firebase.auth().signOut();
+}
+
+firebase.auth().onAuthStateChanged((user)=>{
+  const gate = document.getElementById('auth-gate');
+  if(user){
+    gate.style.display = 'none';
+    loadData();
+  } else {
+    gate.style.display = 'flex';
+    document.getElementById('app').innerHTML = '';
+  }
+});
+</script>
+</body>
+</html>
