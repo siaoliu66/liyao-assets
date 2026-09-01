@@ -10,6 +10,8 @@
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
+<!-- ExcelJS — generates the .xlsx import template with live dropdown lists -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script>
   firebase.initializeApp({
     apiKey: "AIzaSyDnN9uL6BjSg3UVkRH8HQpSRdbI6Aa6_MU",
@@ -212,7 +214,6 @@
   }
   tbody td{padding:12px 14px;border-bottom:1px solid var(--border);font-size:13.5px;vertical-align:middle;}
   tbody tr:hover{background:#F8FAFC;}
-  tbody tr:last-child td{border-bottom:none;}
   .code-cell{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--text-soft);font-weight:600;}
   .name-cell{font-weight:600;}
   .cell-muted{color:var(--text-faint);}
@@ -369,14 +370,34 @@
   /* print view */
   #print-area{display:none;}
   @media print{
+    @page{ size:A4 portrait; margin:0; }
     body *{visibility:hidden;}
     #print-area,#print-area *{visibility:visible;}
-    #print-area{display:block;position:absolute;top:0;left:0;width:100%;}
-    .label-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:14px;}
-    .label-item{border:1px solid #999;border-radius:6px;padding:10px;text-align:center;break-inside:avoid;}
-    .label-item .lname{font-size:11px;font-weight:700;margin-bottom:4px;}
-    .label-item .lcode{font-size:10px;color:#444;margin-top:4px;font-family:'JetBrains Mono',monospace;}
+    #print-area{display:block;position:absolute;top:0;left:0;width:210mm;}
+
+    /* Avery L7160 / 63.5×38.1mm, 3 columns × 7 rows = 21 labels per A4 sheet */
+    .label-grid{
+      display:grid;
+      grid-template-columns:repeat(2,80mm);
+      grid-auto-rows:38.1mm;
+      column-gap:2.5mm;
+      row-gap:0mm;
+      margin:15.15mm 7mm;
+    }
+    .label-cell{width:80mm;height:38.1mm;box-sizing:border-box;padding:1.5mm;overflow:hidden;break-inside:avoid;}
+    .asset-label-table{max-width:none;width:100%;height:100%;}
+    .asset-label-table th,.asset-label-table td{padding:0.6mm 1.5mm;border-width:0.3mm;}
+    
   }
+
+  /* asset info label (table-style printed tag) — shared by the print view and the on-screen preview.
+     The rules above override sizing specifically for print to match the 63.5×38.1mm label sheet.
+     table-layout:fixed + the <colgroup> in renderAssetLabelTable() is what keeps the value column
+     from getting squeezed out by the label column's Chinese text under auto layout. */
+  .asset-label-table{ min-width: 235px; }
+  .asset-label-table th, .asset-label-table td{ border:1px solid #333; padding:2px 4px; text-align:left; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .asset-label-table th{ text-align:center; font-weight:800; background:#fff; white-space:normal; }
+  .asset-label-table .label-key{ background:#F1F5F9; font-weight:700; text-align: center; }
 
   .hidden{display:none !important;}
   .req-star{color:var(--danger);}
@@ -526,12 +547,14 @@ function renderBarcodeSVG(svgEl, text, opts){
 /* =========================================================================
    DATA STORE (in-memory demo data)
    ========================================================================= */
-let seq = { asset: 9, company: 2, dept: 5, person: 5, project: 4, location: 4, category: 8 };
+let seq = { asset: 9, company: 2, dept: 5, person: 5, project: 4, location: 4, category: 8, assetByGroup: {} };
 const uid = (p) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`;
 
 const db = {
   companies: [
-    { id:'c1', name:'總公司' },
+    { id:'c1', name:'力躍運動', code:'LY' },
+    { id:'c2', name:'中促協會', code:'HP' },
+    { id:'c3', name:'方塊踏步協會', code:'SS' },
   ],
   departments: [
     { id:'d1', name:'資訊部', companyId:'c1' },
@@ -556,13 +579,13 @@ const db = {
     { id:'l3', name:'新竹倉庫', code:'LOC-WH' },
   ],
   categories: [
-    { id:'cat1', name:'電腦設備', parentId:null },
-    { id:'cat2', name:'筆記型電腦', parentId:'cat1' },
-    { id:'cat3', name:'桌上型電腦', parentId:'cat1' },
-    { id:'cat4', name:'辦公家具', parentId:null },
-    { id:'cat5', name:'辦公桌', parentId:'cat4' },
-    { id:'cat6', name:'辦公椅', parentId:'cat4' },
-    { id:'cat7', name:'網路設備', parentId:null },
+    { id:'cat1', name:'電腦設備', parentId:null, code:'C' },
+    { id:'cat2', name:'筆記型電腦', parentId:'cat1', code:'01' },
+    { id:'cat3', name:'桌上型電腦', parentId:'cat1', code:'02' },
+    { id:'cat4', name:'辦公家具', parentId:null, code:'F' },
+    { id:'cat5', name:'辦公桌', parentId:'cat4', code:'01' },
+    { id:'cat6', name:'辦公椅', parentId:'cat4', code:'02' },
+    { id:'cat7', name:'網路設備', parentId:null, code:'N' },
   ],
   assets: [],
   transfers: [],
@@ -604,6 +627,43 @@ function categoryLabel(id){
   return c.name;
 }
 function deptsOfCompany(companyId){ return db.departments.filter(d=>d.companyId===companyId); }
+
+/** Combines a category's own code with its parent's code into the middle segment of
+ *  an asset code — e.g. top-level "電腦設備" (code "C") + child "筆記型電腦" (code "01")
+ *  becomes "C01". A category assigned directly (no parent, or a top-level category with
+ *  no children in use) falls back to "<code>00". Returns null if any needed code is missing. */
+function categoryCodeSegment(categoryId){
+  const cat = byId(db.categories, categoryId);
+  if(!cat || !cat.code) return null;
+  if(cat.parentId){
+    const parent = byId(db.categories, cat.parentId);
+    if(!parent || !parent.code) return null;
+    return `${parent.code}${cat.code}`;
+  }
+  return `${cat.code}00`;
+}
+
+/** Generates a new asset code tied to the company + category, e.g. "LY-C01-001".
+ *  The running number is scoped per company+category-segment combo (not global), so
+ *  each combination counts up independently. Callers must confirm company.code and
+ *  categoryCodeSegment() both resolve before calling this — it assumes they already do. */
+function buildAssetCode(companyId, categoryId){
+  const company = byId(db.companies, companyId);
+  const catSegment = categoryCodeSegment(categoryId);
+  const key = `${company.code}::${catSegment}`;
+  if(!seq.assetByGroup) seq.assetByGroup = {};
+  if(!seq.assetByGroup[key]) seq.assetByGroup[key] = 1;
+  const n = seq.assetByGroup[key]++;
+  return `${company.code}-${catSegment}-${String(n).padStart(3,'0')}`;
+}
+
+/** Suggests the next available 2-digit child code within a parent category (01, 02, ...). */
+function nextChildCategoryCode(parentId){
+  const siblings = db.categories.filter(c=>c.parentId===parentId);
+  let max = 0;
+  siblings.forEach(c=>{ const n = parseInt(c.code,10); if(!Number.isNaN(n) && n>max) max = n; });
+  return String(max+1).padStart(2,'0');
+}
 
 const STATUS_STYLE = {
   '使用中':'b-green', '閒置':'b-gray', '維修中':'b-amber', '報廢':'b-red', '借出':'b-blue',
@@ -718,7 +778,7 @@ function renderSidebar(){
     </div>
     <div class="sidebar-foot">
       <div class="avatar">吳</div>
-      <div class="who"><div class="n">系統管理員</div><div class="r">系統管理員</div></div>
+      <div class="who"><div class="n">吳芳誼</div><div class="r">系統管理員</div></div>
       <button class="icon-btn" style="margin-left:auto;color:#8AA0C7;" onclick="logout()" title="登出">${ICONS.x}</button>
     </div>
   </div>`;
@@ -780,18 +840,35 @@ function renderContent(){
 }
 
 function afterRender(){
-  // hook barcode rendering if barcode tab visible
-  if(state.view==='asset-detail' && state.assetTab==='barcode'){
-    drawBarcode();
-  }
+  // no-op for now — kept as a hook point for any future post-render wiring
 }
 
 /* =========================================================================
    ASSET LIST
    ========================================================================= */
+function categorySortKey(categoryId){
+  const cat = byId(db.categories, categoryId);
+  if(!cat) return [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER];
+  if(cat.parentId){
+    const parentIdx = db.categories.findIndex(c=>c.id===cat.parentId);
+    const siblings = db.categories.filter(c=>c.parentId===cat.parentId);
+    const childIdx = siblings.findIndex(c=>c.id===cat.id);
+    return [parentIdx===-1 ? Number.MAX_SAFE_INTEGER : parentIdx, childIdx];
+  }
+  const idx = db.categories.findIndex(c=>c.id===categoryId);
+  return [idx===-1 ? Number.MAX_SAFE_INTEGER : idx, -1];
+}
+
+function sortedCategories(){
+  return db.categories.slice().sort((a,b)=>{
+    const ka = categorySortKey(a.id), kb = categorySortKey(b.id);
+    return ka[0]!==kb[0] ? ka[0]-kb[0] : ka[1]-kb[1];
+  });
+}
+
 function filteredAssets(){
   const f = state.filters;
-  return db.assets.filter(a=>{
+  const list = db.assets.filter(a=>{
     if(f.q){
       const q = f.q.toLowerCase();
       if(!(a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q))) return false;
@@ -803,6 +880,10 @@ function filteredAssets(){
     if(f.location && a.locationId!==f.location) return false;
     return true;
   });
+  return list.slice().sort((a,b)=>{
+  const ka = categorySortKey(a.categoryId), kb = categorySortKey(b.categoryId);
+  return ka[0]!==kb[0] ? ka[0]-kb[0] : ka[1]-kb[1];
+});
 }
 
 function renderAssetList(){
@@ -811,7 +892,7 @@ function renderAssetList(){
   const activeFilterCount = Object.entries(state.filters).filter(([k,v])=>v && k!=='q').length;
 
   return `
-  <div class="helper-note">${ICONS.info}<span>建議先「下載匯入範本」依格式填寫，標示 <span class="req">*</span> 的欄位為必填，匯入時系統會自動檢查每一筆資料。</span></div>
+  <div class="helper-note">${ICONS.info}<span>建議先「下載匯入範本」依格式填寫，範本是 Excel 檔，分類／公司／部門／專案／保管人／地點／狀態都會是下拉選單（選項會依系統管理目前的資料自動產生），日期欄位可以填「2026-01-15」或「2026/1/15」都可以，標示 <span class="req">*</span> 的欄位為必填，匯入時系統會自動檢查每一筆資料。</span></div>
   <div class="panel">
     <div class="toolbar">
       <div class="toolbar-left">
@@ -824,7 +905,7 @@ function renderAssetList(){
         </button>
       </div>
       <div class="toolbar-right page-actions">
-        <button class="btn" onclick="printSelected()">${ICONS.printer}<span>列印資產編號</span></button>
+        <button class="btn" onclick="printSelected()">${ICONS.printer}<span>列印標籤</span></button>
         <button class="btn" onclick="exportCsv()">${ICONS.download}<span>匯出</span></button>
         <button class="btn" onclick="openImportModal({title:'匯入資產', templateFn:'downloadAssetTemplate', onFile:importCsv})">${ICONS.upload}<span>匯入</span></button>
         <button class="btn btn-primary" onclick="openAssetNew()">${ICONS.plus}<span>新增資產</span></button>
@@ -836,8 +917,7 @@ function renderAssetList(){
         <label>資產分類</label>
         <select onchange="setFilter('category',this.value)">
           <option value="">全部分類</option>
-          ${db.categories.map(c=>`<option value="${c.id}" ${state.filters.category===c.id?'selected':''}>${categoryLabel(c.id)}</option>`).join('')}
-        </select>
+          ${sortedCategories().map(c=>`<option value="${c.id}" ${state.filters.category===c.id?'selected':''}>${categoryLabel(c.id)}</option>`).join('')}        </select>
       </div>
       <div class="f-field">
         <label>狀態</label>
@@ -943,16 +1023,19 @@ function rerenderContent(){
   persistData();
 }
 
-/* ---------- CSV helpers (shared by asset + people import/export) ---------- */
-function csvSafe(v){ v = (v??'').toString(); return /[",\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v; }
-function downloadCsv(rows, filename){
-  const lines = rows.map(r=>r.map(csvSafe).join(','));
-  const blob = new Blob(['\uFEFF'+lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+/* ---------- Blob download + CSV helpers (shared by asset + people import/export) ---------- */
+function triggerBlobDownload(blob, filename){
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url; link.download = filename;
   document.body.appendChild(link); link.click(); document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+function csvSafe(v){ v = (v??'').toString(); return /[",\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v; }
+function downloadCsv(rows, filename){
+  const lines = rows.map(r=>r.map(csvSafe).join(','));
+  const blob = new Blob(['\uFEFF'+lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  triggerBlobDownload(blob, filename);
 }
 /** Minimal CSV parser that also handles quoted fields containing commas/newlines. */
 function parseCsv(text){
@@ -974,11 +1057,116 @@ function parseCsv(text){
   if(field.length || row.length){ row.push(field); rows.push(row); }
   return rows.filter(r => !(r.length===1 && r[0].trim()===''));
 }
-/** Looks up a reference entity by its display name for a CSV import column. Empty input is allowed (required-ness is checked separately). */
+
+/* ---------- Excel (.xlsx) template with live dropdown lists ---------- */
+/** Converts a 1-indexed column number to an Excel column letter (1 -> A, 27 -> AA). */
+function colLetter(n){
+  let s = '';
+  while(n > 0){ const rem = (n-1) % 26; s = String.fromCharCode(65+rem) + s; n = Math.floor((n-1)/26); }
+  return s;
+}
+/** Builds an .xlsx template workbook: header row, one example row, and (for every
+ *  column backed by system-managed data — col.ref or col.choices) a real Excel
+ *  dropdown sourced from a hidden sheet, generated fresh from current db state. */
+async function buildImportTemplateWorkbook(columns, exampleRow, sheetTitle){
+  const wb = new window.ExcelJS.Workbook();
+  const ws = wb.addWorksheet(sheetTitle);
+  const listsWs = wb.addWorksheet('選項清單（請勿刪除）');
+
+  ws.addRow(columns.map(c=>c.label+(c.required?'*':'')));
+  ws.getRow(1).font = { bold:true };
+  ws.getRow(1).eachCell(cell=>{ cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFDFF6F2'} }; });
+  if(exampleRow) ws.addRow(exampleRow);
+
+  const VALIDATE_ROWS = 300;
+  columns.forEach((col, idx)=>{
+    if(col.date){ ws.getColumn(idx+1).numFmt = '@'; } // keep dates as literal text, not Excel date serials
+    let values = null;
+    if(col.ref) values = col.ref().map(item => col.refLabel(item));
+    else if(col.choices) values = col.choices();
+    if(!values || values.length === 0) return;
+
+    const listCol = colLetter(idx+1);
+    values.forEach((v, ri)=>{ listsWs.getCell(`${listCol}${ri+1}`).value = v; });
+    const range = `'${listsWs.name}'!$${listCol}$1:$${listCol}$${values.length}`;
+
+    const mainCol = colLetter(idx+1);
+    for(let r=2; r<=VALIDATE_ROWS; r++){
+      ws.getCell(`${mainCol}${r}`).dataValidation = {
+        type:'list', allowBlank:true, formulae:[range],
+        showErrorMessage:true, errorTitle:'不在清單內',
+        error:'請從下拉選單中選擇既有資料；如果是全新的選項，請先到系統管理新增後再重新下載範本。',
+      };
+    }
+  });
+
+  columns.forEach((c, idx)=>{ ws.getColumn(idx+1).width = 22; });
+  listsWs.state = 'veryHidden';
+  return wb;
+}
+async function downloadWorkbookAsXlsx(wb, filename){
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  triggerBlobDownload(blob, filename);
+}
+/** Reads an uploaded .xlsx file back into the same row-of-strings shape parseCsv() produces. */
+async function readXlsxFileToRows(file){
+  const buffer = await file.arrayBuffer();
+  const wb = new window.ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  const ws = wb.worksheets[0];
+  const rows = [];
+  ws.eachRow({ includeEmpty:false }, (row)=>{
+    const raw = row.values; // 1-indexed; raw[0] is unused
+    const vals = [];
+    for(let i=1;i<raw.length;i++){
+      let v = raw[i];
+      if(v===null || v===undefined) v = '';
+      else if(v instanceof Date){
+        v = `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
+      } else if(typeof v === 'object'){
+        if(v.text!==undefined) v = v.text;
+        else if(v.richText) v = v.richText.map(rt=>rt.text).join('');
+        else if(v.result!==undefined) v = v.result;
+        else v = v.toString();
+      }
+      vals.push(String(v));
+    }
+    rows.push(vals);
+  });
+  return rows;
+}
+/** Dispatches to the xlsx or CSV reader based on file extension, both returning the same row-array shape. */
+async function readImportFileToRows(file){
+  const name = (file.name||'').toLowerCase();
+  if(name.endsWith('.xlsx')) return readXlsxFileToRows(file);
+  const text = await readCsvFileSmart(file);
+  return parseCsv(text);
+}
+
+/** Looks up a reference entity by its display name for a CSV import column. Empty input is allowed (required-ness is checked separately).
+ *  Matching is whitespace/case-insensitive, and falls back to col.fallbackLabel (e.g. bare category name) when the primary label doesn't match. */
+function normalizeForMatch(s){ return (s??'').toString().trim().replace(/\s+/g,' ').toLowerCase(); }
+/** Accepts a date typed as YYYY-MM-DD or YYYY/M/D (either separator, month/day need not be
+ *  zero-padded) and normalizes it to YYYY-MM-DD for storage. Returns '' for empty input,
+ *  or null if the text doesn't look like a valid date at all. */
+function normalizeDateInput(raw){
+  const v = (raw||'').toString().trim();
+  if(!v) return '';
+  const m = v.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
+  if(!m) return null;
+  const yyyy = m[1], mm = Number(m[2]), dd = Number(m[3]);
+  if(mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  return `${yyyy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+}
 function findRefByColumn(col, rawValue){
-  const v = (rawValue||'').trim();
+  const v = normalizeForMatch(rawValue);
   if(!v) return { id:'', matched:true };
-  const found = col.ref().find(item => col.refLabel(item).trim().toLowerCase() === v.toLowerCase());
+  const list = col.ref();
+  let found = list.find(item => normalizeForMatch(col.refLabel(item)) === v);
+  if(!found && col.fallbackLabel){
+    found = list.find(item => normalizeForMatch(col.fallbackLabel(item)) === v);
+  }
   return found ? { id:found.id, matched:true } : { id:'', matched:false };
 }
 /** Shows a modal listing every row that failed validation; nothing is imported until all rows pass. */
@@ -1002,7 +1190,7 @@ function openImportModal(cfg){
     <button type="button" class="btn" style="width:100%;justify-content:center;margin-bottom:18px;" onclick="${cfg.templateFn}()">${ICONS.download}<span>下載匯入範本</span></button>
     <div class="field">
       <label>選擇 CSV 檔案 <span class="req">*</span></label>
-      <input type="file" id="import-modal-file" accept=".csv" onchange="document.getElementById('import-modal-filename').textContent = this.files[0] ? this.files[0].name : '尚未選擇檔案';">
+      <input type="file" id="import-modal-file" accept=".csv,.xlsx" onchange="document.getElementById('import-modal-filename').textContent = this.files[0] ? this.files[0].name : '尚未選擇檔案';">
       <div class="field-hint" id="import-modal-filename">尚未選擇檔案</div>
     </div>`;
   openModal({
@@ -1022,12 +1210,12 @@ function openImportModal(cfg){
 /* ---------- Asset export / template / import ---------- */
 const ASSET_IMPORT_COLUMNS = [
   { key:'name',        label:'名稱',       required:true },
-  { key:'category',    label:'分類',       required:true,  ref:()=>db.categories, refLabel:c=>categoryLabel(c.id) },
+  { key:'category',    label:'分類',       required:true,  ref:()=>db.categories, refLabel:c=>categoryLabel(c.id), fallbackLabel:c=>c.name },
   { key:'brand',       label:'品牌',       required:false },
   { key:'model',       label:'型號',       required:false },
   { key:'serial',      label:'序號',       required:false },
-  { key:'purchaseDate',label:'購買日期(YYYY-MM-DD)', required:true,  date:true },
-  { key:'scrapDate',   label:'報廢日期(YYYY-MM-DD)', required:false, date:true },
+  { key:'purchaseDate',label:'購買日期(2026-01-15 或 2026/1/15)', required:true,  date:true },
+  { key:'scrapDate',   label:'報廢日期(2026-01-15 或 2026/1/15)', required:false, date:true },
   { key:'company',     label:'所屬公司',   required:true,  ref:()=>db.companies, refLabel:c=>c.name },
   { key:'department',  label:'部門',       required:false, ref:()=>db.departments, refLabel:d=>d.name },
   { key:'project',     label:'所屬專案',   required:true,  ref:()=>db.projects, refLabel:p=>p.name },
@@ -1036,11 +1224,16 @@ const ASSET_IMPORT_COLUMNS = [
   { key:'status',      label:'狀態',       required:false, choices:()=>Object.keys(STATUS_STYLE) },
   { key:'value',       label:'財產價值(NT$)', required:false, number:true },
 ];
-function downloadAssetTemplate(){
-  const headers = ASSET_IMPORT_COLUMNS.map(c=>c.label+(c.required?'*':''));
+async function downloadAssetTemplate(){
   const example = ['MacBook Pro 14"', categoryLabel(db.categories[1]?.id)||'電腦設備 / 筆記型電腦','Apple','MBP14-M3','C02XXXXXXX','2026-01-15','', companyName('c1')||'總公司', deptName('d1')||'資訊部', db.projects[0]?.name||'ERP系統導入', db.people[0]?.name||'陳志明', db.locations[0]?.name||'總部3樓辦公室','使用中','68900'];
-  downloadCsv([headers, example], `資產匯入範本_${todayStr()}.csv`);
-  showToast('已下載匯入範本');
+  try{
+    const wb = await buildImportTemplateWorkbook(ASSET_IMPORT_COLUMNS, example, '資產匯入範本');
+    await downloadWorkbookAsXlsx(wb, `資產匯入範本_${todayStr()}.xlsx`);
+    showToast('已下載匯入範本（含下拉選單）');
+  }catch(e){
+    console.error('xlsx template build failed', e);
+    showToast('範本產生失敗，請稍後再試', true);
+  }
 }
 function exportCsv(){
   const rows = filteredAssets();
@@ -1054,14 +1247,34 @@ function exportCsv(){
   downloadCsv([headers, ...data], `資產清單_${todayStr()}.csv`);
   showToast('已匯出 CSV 檔案');
 }
+/** Reads a CSV file and auto-detects encoding: tries UTF-8 first, falls back to
+ *  Big5 if the bytes don't decode cleanly (common when a file was edited and
+ *  re-saved from Excel on Traditional Chinese Windows, which defaults to Big5). */
+function readCsvFileSmart(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      const buf = e.target.result;
+      let text;
+      try{
+        text = new TextDecoder('utf-8', { fatal:true }).decode(buf);
+      }catch(err){
+        try{ text = new TextDecoder('big5').decode(buf); }
+        catch(err2){ text = new TextDecoder('utf-8', { fatal:false }).decode(buf); }
+      }
+      if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip BOM
+      resolve(text);
+    };
+    reader.onerror = ()=>reject(new Error('read failed'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 function importCsv(file){
   if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (e)=>{
-    const rows = parseCsv(e.target.result);
+  readImportFileToRows(file).then((rows)=>{
     if(rows.length<2){ showToast('檔案內沒有可匯入的資料', true); return; }
-    const errors = [], toInsert = [];
-    rows.slice(1).forEach((cols, idx)=>{
+    const parsed = rows.slice(1).map((cols, idx)=>{
       const lineNo = idx+2, rowErrors = [], rec = {};
       ASSET_IMPORT_COLUMNS.forEach((col,ci)=>{
         const raw = (cols[ci]||'').trim();
@@ -1074,8 +1287,9 @@ function importCsv(file){
           if(raw && !col.choices().includes(raw)) rowErrors.push(`「${col.label}」值不正確：${raw}`);
           rec[col.key] = raw || '閒置';
         } else if(col.date){
-          if(raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) rowErrors.push(`「${col.label}」格式需為 YYYY-MM-DD`);
-          rec[col.key] = raw;
+          const norm = normalizeDateInput(raw);
+          if(raw && norm===null) rowErrors.push(`「${col.label}」日期格式看不懂，請用 2026-01-15 或 2026/1/15 這種格式`);
+          rec[col.key] = norm || '';
         } else if(col.number){
           if(raw && (Number.isNaN(Number(raw)) || Number(raw) < 0)) rowErrors.push(`「${col.label}」需為 0 或正數`);
           rec[col.key] = raw ? Number(raw) : '';
@@ -1083,15 +1297,43 @@ function importCsv(file){
           rec[col.key] = raw;
         }
       });
-      if(rowErrors.length) errors.push({ line:lineNo, messages:rowErrors });
-      else toInsert.push(rec);
+      return { lineNo, rowErrors, rec };
     });
+
+    // Company / category must have their "code" set (system management) before an asset code can be generated.
+    parsed.forEach(p=>{
+      const company = p.rec.company ? byId(db.companies, p.rec.company) : null;
+      const category = p.rec.category ? byId(db.categories, p.rec.category) : null;
+      if(company && !company.code) p.rowErrors.push(`所屬公司「${company.name}」尚未設定「公司代碼」，請先到系統管理補上`);
+      if(category && !categoryCodeSegment(p.rec.category)) p.rowErrors.push(`分類「${category.name}」或其上層分類尚未設定代碼，請先到系統管理補上`);
+    });
+
+    // Duplicate-serial detection: catches re-importing the same physical asset twice,
+    // both against assets already in the system and against other rows in this same file.
+    const existingBySerial = new Map();
+    db.assets.forEach(a=>{ if(a.serial && a.serial.trim()) existingBySerial.set(normalizeForMatch(a.serial), a.code); });
+    const seenInBatch = new Map();
+    parsed.forEach(p=>{
+      const serial = (p.rec.serial||'').trim();
+      if(!serial) return;
+      const key = normalizeForMatch(serial);
+      if(existingBySerial.has(key)){
+        p.rowErrors.push(`「序號」與現有資產重複：${serial}（既有資產編號：${existingBySerial.get(key)}）`);
+      } else if(seenInBatch.has(key)){
+        p.rowErrors.push(`「序號」與檔案內第 ${seenInBatch.get(key)} 列重複：${serial}`);
+      } else {
+        seenInBatch.set(key, p.lineNo);
+      }
+    });
+
+    const errors = parsed.filter(p=>p.rowErrors.length).map(p=>({ line:p.lineNo, messages:p.rowErrors }));
+    const toInsert = parsed.filter(p=>!p.rowErrors.length).map(p=>p.rec);
 
     if(errors.length){ showImportErrors('資產', errors); return; }
 
     toInsert.forEach(rec=>{
       db.assets.push({
-        id: uid('a'), code:`AST${String(seq.asset++).padStart(5,'0')}`,
+        id: uid('a'), code: buildAssetCode(rec.company, rec.category),
         name: rec.name, categoryId: rec.category, brand: rec.brand, model: rec.model, serial: rec.serial,
         purchaseDate: rec.purchaseDate, scrapDate: rec.scrapDate, companyId: rec.company,
         departmentId: rec.department, projectId: rec.project, custodianId: rec.custodian,
@@ -1101,8 +1343,24 @@ function importCsv(file){
     state.page = 1;
     rerenderContent();
     showToast(`已成功匯入 ${toInsert.length} 筆資產`);
-  };
-  reader.readAsText(file, 'UTF-8');
+  }).catch(()=>{
+    showToast('讀取檔案失敗，請確認檔案格式是否為 CSV 或 Excel(.xlsx)', true);
+  });
+}
+
+/** Renders the printable "asset info tag" — a bordered table showing company,
+ *  name, code, location and purchase date, matching the paper label format. */
+function renderAssetLabelTable(a){
+  return `
+    <table class="asset-label-table">
+      <colgroup><col><col></colgroup>
+      <tr><th colspan="2">${escHtml(companyName(a.companyId) || '（未指定公司）')}</th></tr>
+      <tr><td class="label-key">財產名稱</td><td>${escHtml(a.name)}</td></tr>
+      <tr><td class="label-key">財產編號</td><td>${escHtml(a.code)}</td></tr>
+      <tr><td class="label-key">所屬專案</td><td>${escHtml(projectName(a.projectId) || '—')}</td></tr>
+      <tr><td class="label-key">放置場域</td><td>${escHtml(locationName(a.locationId) || '—')}</td></tr>
+      <tr><td class="label-key">購買日期</td><td>${escHtml(a.purchaseDate || '—')}</td></tr>
+    </table>`;
 }
 
 function printSelected(){
@@ -1110,18 +1368,17 @@ function printSelected(){
   if(ids.length===0){ showToast('請先勾選要列印的資產', true); return; }
   const items = ids.map(id=>byId(db.assets,id)).filter(Boolean);
   const area = document.getElementById('print-area');
-  area.innerHTML = `<div class="label-grid">${items.map(a=>`
-    <div class="label-item">
-      <div class="lname">${escHtml(a.name)}</div>
-      <svg class="pb" data-code="${a.code}"></svg>
-      <div class="lcode">${a.code}</div>
-    </div>`).join('')}</div>`;
-  setTimeout(()=>{
-    area.querySelectorAll('.pb').forEach(svg=>{
-      renderBarcodeSVG(svg, svg.dataset.code, { moduleWidth:1.6, height:38, fontSize:11, margin:4, displayValue:false });
-    });
-    window.print();
-  }, 60);
+
+  const PER_SHEET = 21; // 3 columns × 7 rows on one A4 sheet (Avery L7160 layout)
+  const sheets = [];
+  for(let i=0;i<items.length;i+=PER_SHEET){ sheets.push(items.slice(i, i+PER_SHEET)); }
+
+  area.innerHTML = sheets.map((sheetItems, si)=>`
+    <div class="label-grid" ${si<sheets.length-1 ? 'style="break-after:page;page-break-after:always;"' : ''}>
+      ${sheetItems.map(a=>`<div class="label-cell">${renderAssetLabelTable(a)}</div>`).join('')}
+    </div>`).join('');
+
+  setTimeout(()=>{ window.print(); }, 60);
 }
 
 /* =========================================================================
@@ -1157,7 +1414,11 @@ function saveAsset(){
   if(!draftAsset.custodianId){ showToast('請選擇保管人', true); setAssetTab('owner'); return; }
 
   if(state.detailMode==='new'){
-    const newAsset = {...draftAsset, id: uid('a'), code:`AST${String(seq.asset++).padStart(5,'0')}`};
+    const company = byId(db.companies, draftAsset.companyId);
+    const category = byId(db.categories, draftAsset.categoryId);
+    if(!company.code){ showToast(`所屬公司「${company.name}」尚未設定「公司代碼」，請先到系統管理 > 組織架構補上`, true); setAssetTab('owner'); return; }
+    if(!categoryCodeSegment(draftAsset.categoryId)){ showToast(`分類「${category.name}」或其上層分類尚未設定代碼，請先到系統管理 > 資產分類管理補上`, true); setAssetTab('basic'); return; }
+    const newAsset = {...draftAsset, id: uid('a'), code: buildAssetCode(draftAsset.companyId, draftAsset.categoryId)};
     db.assets.push(newAsset);
     state.detailAssetId = newAsset.id;
     showToast('資產已新增');
@@ -1203,7 +1464,7 @@ const ASSET_TABS = [
   { key:'spec', label:'規格資訊', n:2 },
   { key:'purchase', label:'採購資訊', n:3 },
   { key:'owner', label:'歸屬資訊', n:4 },
-  { key:'barcode', label:'列印條碼', n:5 },
+  { key:'barcode', label:'列印標籤', n:5 },
 ];
 
 function renderAssetDetail(){
@@ -1263,7 +1524,7 @@ function sectionBasic(a, editable, mode){
       <div class="field">
         <label>資產編號</label>
         <div class="ro-field">${a.code}</div>
-        <div class="field-hint">${mode==='new' ? '儲存後系統將自動產生唯一編號' : '系統產生，唯一辨識碼，不可修改'}</div>
+        <div class="field-hint">${mode==='new' ? '儲存後，系統會依「所屬公司」與「分類」的代碼自動組成編號' : '系統產生，唯一辨識碼，不可修改'}</div>
       </div>
       <div class="field">
         <label>狀態</label>
@@ -1282,7 +1543,7 @@ function sectionBasic(a, editable, mode){
         ${editable
           ? `<select onchange="updateDraft('categoryId',this.value)">
               <option value="">請選擇分類</option>
-              ${db.categories.map(c=>`<option value="${c.id}" ${a.categoryId===c.id?'selected':''}>${categoryLabel(c.id)}</option>`).join('')}
+              ${sortedCategories().map(c=>`<option value="${c.id}" ${a.categoryId===c.id?'selected':''}>${categoryLabel(c.id)}</option>`).join('')}
             </select>`
           : fieldView(categoryLabel(a.categoryId))}
       </div>
@@ -1402,26 +1663,17 @@ function sectionOwner(a, editable){
 
 function sectionBarcode(a){
   if(!a.id){
-    return `<div class="panel section-card"><div class="helper-note">${ICONS.info}<span>請先儲存資產後，系統才會產生條碼。</span></div></div>`;
+    return `<div class="panel section-card"><div class="helper-note">${ICONS.info}<span>請先儲存資產後，才能列印標籤。</span></div></div>`;
   }
   return `
   <div class="panel section-card">
-    <h3>列印條碼</h3>
-    <div class="sub">系統依資產編號自動產生 Code128 條碼</div>
+    <h3>列印標籤</h3>
+    <div class="sub">預覽下方樣式，內容會列印公司、財產名稱、財產編號、所屬專案、放置場域、購買日期</div>
     <div class="barcode-block">
-      <svg id="detail-barcode"></svg>
-      <div class="barcode-meta">${escHtml(a.name)}<br>${a.code}</div>
-      <button class="btn btn-primary" onclick="printOne('${a.id}')">${ICONS.printer}<span>列印此條碼</span></button>
+      <div>${renderAssetLabelTable(a)}</div>
+      <button class="btn btn-primary" onclick="printOne('${a.id}')">${ICONS.printer}<span>列印此標籤</span></button>
     </div>
   </div>`;
-}
-
-function drawBarcode(){
-  const el = document.getElementById('detail-barcode');
-  if(!el) return;
-  const a = state.detailMode==='view' ? byId(db.assets,state.detailAssetId) : draftAsset;
-  if(!a || !a.id) return;
-  renderBarcodeSVG(el, a.code, { moduleWidth:2.2, height:64, fontSize:14, margin:10, displayValue:true });
 }
 
 function printOne(id){
@@ -1442,7 +1694,7 @@ function renderOrg(){
   ${db.companies.map(c=>`
     <div class="panel tree-card">
       <div class="tree-company">
-        <div class="name">${ICONS.building}<span>${escHtml(c.name)}</span></div>
+        <div class="name">${ICONS.building}<span>${escHtml(c.name)}</span><span class="code-cell" style="margin-left:8px;">${c.code||'未設代碼'}</span></div>
         <div class="row-actions">
           <button class="btn btn-sm" onclick="openDeptModal('${c.id}')">${ICONS.plus}<span>新增部門</span></button>
           <button class="icon-btn" onclick="openCompanyModal('${c.id}')">${ICONS.edit}</button>
@@ -1463,11 +1715,18 @@ function openCompanyModal(id){
   const c = id ? byId(db.companies,id) : null;
   openModal({
     title: c ? '編輯公司' : '新增公司',
-    body: `<div class="field"><label>公司名稱 <span class="req">*</span></label><input id="m-company-name" type="text" value="${escAttr(c?.name||'')}" placeholder="例如：總公司"></div>`,
+    body: `
+      <div class="field"><label>公司名稱 <span class="req">*</span></label><input id="m-company-name" type="text" value="${escAttr(c?.name||'')}" placeholder="例如：總公司"></div>
+      <div class="field"><label>公司代碼 <span class="req">*</span></label><input id="m-company-code" type="text" value="${escAttr(c?.code||'')}" placeholder="例如：HQ"></div>
+      <div class="field-hint">公司代碼會用在新增資產時自動組成資產編號（例如 LY-C01-001），建議用簡短英文縮寫。</div>`,
     onSave: ()=>{
       const name = document.getElementById('m-company-name').value.trim();
+      const code = document.getElementById('m-company-code').value.trim().toUpperCase();
       if(!name){ showToast('請輸入公司名稱', true); return false; }
-      if(c){ c.name = name; } else { db.companies.push({id:uid('c'), name}); }
+      if(!code){ showToast('請輸入公司代碼', true); return false; }
+      const dup = db.companies.find(x=>x.id!==(c?.id) && x.code===code);
+      if(dup){ showToast(`這組公司代碼已經被「${dup.name}」使用了，請換一個`, true); return false; }
+      if(c){ c.name = name; c.code = code; } else { db.companies.push({id:uid('c'), name, code}); }
       rerenderContent();
       showToast(c ? '公司已更新' : '公司已新增');
       return true;
@@ -1581,20 +1840,22 @@ const PEOPLE_IMPORT_COLUMNS = [
   { key:'phone',      label:'電話',     required:false },
   { key:'status',     label:'狀態',     required:false, choices:()=>['在職','離職'] },
 ];
-function downloadPeopleTemplate(){
-  const headers = PEOPLE_IMPORT_COLUMNS.map(c=>c.label+(c.required?'*':''));
+async function downloadPeopleTemplate(){
   const example = ['陳志明', companyName('c1')||'總公司', deptName('d1')||'資訊部', 'name@example.com', '0912-345-678', '在職'];
-  downloadCsv([headers, example], `人員匯入範本_${todayStr()}.csv`);
-  showToast('已下載匯入範本');
+  try{
+    const wb = await buildImportTemplateWorkbook(PEOPLE_IMPORT_COLUMNS, example, '人員匯入範本');
+    await downloadWorkbookAsXlsx(wb, `人員匯入範本_${todayStr()}.xlsx`);
+    showToast('已下載匯入範本（含下拉選單）');
+  }catch(e){
+    console.error('xlsx template build failed', e);
+    showToast('範本產生失敗，請稍後再試', true);
+  }
 }
 function importPeopleCsv(file){
   if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (e)=>{
-    const rows = parseCsv(e.target.result);
+  readImportFileToRows(file).then((rows)=>{
     if(rows.length<2){ showToast('檔案內沒有可匯入的資料', true); return; }
-    const errors = [], toInsert = [];
-    rows.slice(1).forEach((cols, idx)=>{
+    const parsed = rows.slice(1).map((cols, idx)=>{
       const lineNo = idx+2, rowErrors = [], rec = {};
       PEOPLE_IMPORT_COLUMNS.forEach((col,ci)=>{
         const raw = (cols[ci]||'').trim();
@@ -1610,9 +1871,28 @@ function importPeopleCsv(file){
           rec[col.key] = raw;
         }
       });
-      if(rowErrors.length) errors.push({ line:lineNo, messages:rowErrors });
-      else toInsert.push(rec);
+      return { lineNo, rowErrors, rec };
     });
+
+    // Duplicate-email detection: same idea as the asset serial-number check.
+    const existingByEmail = new Map();
+    db.people.forEach(p=>{ if(p.email && p.email.trim()) existingByEmail.set(normalizeForMatch(p.email), p.name); });
+    const seenInBatch = new Map();
+    parsed.forEach(p=>{
+      const email = (p.rec.email||'').trim();
+      if(!email) return;
+      const key = normalizeForMatch(email);
+      if(existingByEmail.has(key)){
+        p.rowErrors.push(`「Email」與現有人員重複：${email}（既有姓名：${existingByEmail.get(key)}）`);
+      } else if(seenInBatch.has(key)){
+        p.rowErrors.push(`「Email」與檔案內第 ${seenInBatch.get(key)} 列重複：${email}`);
+      } else {
+        seenInBatch.set(key, p.lineNo);
+      }
+    });
+
+    const errors = parsed.filter(p=>p.rowErrors.length).map(p=>({ line:p.lineNo, messages:p.rowErrors }));
+    const toInsert = parsed.filter(p=>!p.rowErrors.length).map(p=>p.rec);
 
     if(errors.length){ showImportErrors('人員', errors); return; }
 
@@ -1625,14 +1905,15 @@ function importPeopleCsv(file){
     state.page = 1;
     rerenderContent();
     showToast(`已成功匯入 ${toInsert.length} 筆人員`);
-  };
-  reader.readAsText(file, 'UTF-8');
+  }).catch(()=>{
+    showToast('讀取檔案失敗，請確認檔案格式是否為 CSV 或 Excel(.xlsx)', true);
+  });
 }
 
 function renderPeoplePage(){
   const { items, total, totalPages } = paginate(db.people);
   return `
-  <div class="helper-note">${ICONS.info}<span>建議先「下載匯入範本」依格式填寫，標示 <span class="req">*</span> 的欄位為必填。</span></div>
+  <div class="helper-note">${ICONS.info}<span>建議先「下載匯入範本」依格式填寫，範本是 Excel 檔，公司／部門／狀態會是下拉選單（選項依系統管理目前的資料自動產生），標示 <span class="req">*</span> 的欄位為必填。</span></div>
   <div class="panel">
     <div class="toolbar">
       <div class="toolbar-left"><span class="cell-muted">共 ${total} 筆資料</span></div>
@@ -1750,13 +2031,14 @@ function renderCategoriesPage(){
     <div class="table-wrap">
       ${items.length===0 ? renderEmptyState() : `
       <table>
-        <thead><tr><th>分類名稱</th><th>子分類數</th><th style="width:110px;">功能</th></tr></thead>
+        <thead><tr><th>分類名稱</th><th>代碼</th><th>子分類數</th><th style="width:110px;">功能</th></tr></thead>
         <tbody>
           ${items.map(c=>{
             const childCount = db.categories.filter(x=>x.parentId===c.id).length;
             return `
             <tr>
               <td><span class="name-cell" style="cursor:pointer;color:var(--accent);" onclick="enterCategory('${c.id}')">${escHtml(c.name)}</span></td>
+              <td class="code-cell">${c.code||'—'}</td>
               <td class="cell-muted">${childCount ? `${childCount} 項` : '—'}</td>
               <td>
                 <div class="row-actions">
@@ -1789,14 +2071,40 @@ function buildCategoryBreadcrumb(parentId){
 function enterCategory(id){ state.categoryParentId = id; state.page = 1; rerenderContent(); }
 function openCategoryModal(id, parentIdForNew){
   const c = id ? byId(db.categories, id) : null;
+  const isChild = c ? !!c.parentId : !!parentIdForNew;
+  const parentId = c ? c.parentId : parentIdForNew;
+
+  const body = isChild
+    ? `
+      <div class="field"><label>子分類名稱 <span class="req">*</span></label><input id="m-cat-name" type="text" value="${escAttr(c?.name||'')}"></div>
+      <div class="field-hint">編號由系統自動依序帶入（01、02...），不用手動輸入。</div>`
+    : `
+      <div class="field"><label>分類名稱 <span class="req">*</span></label><input id="m-cat-name" type="text" value="${escAttr(c?.name||'')}"></div>
+      <div class="field"><label>分類代碼（英文字母） <span class="req">*</span></label><input id="m-cat-code" type="text" value="${escAttr(c?.code||'')}" placeholder="例如：C"></div>
+      <div class="field-hint">會作為資產編號中段的開頭字母（例如 C），底下的子分類會自動接續編號。</div>`;
+
   openModal({
     title: c ? '編輯分類' : '新增分類',
-    body: `<div class="field"><label>分類名稱 <span class="req">*</span></label><input id="m-cat-name" type="text" value="${escAttr(c?.name||'')}"></div>`,
+    body,
     onSave: ()=>{
       const name = document.getElementById('m-cat-name').value.trim();
       if(!name){ showToast('請輸入分類名稱', true); return false; }
-      if(c){ c.name = name; }
-      else { db.categories.push({ id:uid('cat'), name, parentId: parentIdForNew || null }); }
+
+      if(isChild){
+        if(c){
+          c.name = name; // code stays as originally auto-assigned — never edited here
+        } else {
+          db.categories.push({ id:uid('cat'), name, code: nextChildCategoryCode(parentId), parentId });
+        }
+      } else {
+        const code = document.getElementById('m-cat-code').value.trim().toUpperCase();
+        if(!code){ showToast('請輸入分類代碼', true); return false; }
+        if(!/^[A-Z0-9]+$/.test(code)){ showToast('分類代碼只能是英文字母或數字', true); return false; }
+        const dup = db.categories.find(x=>!x.parentId && x.id!==(c?.id) && x.code===code);
+        if(dup){ showToast(`這組代碼已經被「${dup.name}」使用了，請換一個`, true); return false; }
+        if(c){ c.name = name; c.code = code; }
+        else { db.categories.push({ id:uid('cat'), name, code, parentId: null }); }
+      }
       rerenderContent();
       showToast(c ? '分類已更新' : '分類已新增');
       return true;
@@ -2076,11 +2384,21 @@ function todayStr(){ const d=new Date(); return `${d.getFullYear()}${String(d.ge
    Claude-artifact-only window.storage API.
    NOTE: everyone who opens this page reads/writes the same document —
    by design for a shared, multi-user asset system.
+
+   SAFETY: persistData() refuses to write anything until dataReady is
+   explicitly set true by loadData() — and loadData() only sets it true
+   after a genuinely trustworthy load (real data successfully parsed, or
+   a Firestore-confirmed brand-new database). Any read failure or
+   unexpected shape leaves dataReady false, so a transient network/auth
+   hiccup can never cause a fallback/seed state to silently overwrite
+   real data in Firestore.
    ========================================================================= */
 let saveTimer = null;
 let saveIndicatorTimer = null;
+let dataReady = false;
 
 function persistData(){
+  if(!dataReady) return; // never write until a trustworthy load has completed
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async ()=>{
     try{
@@ -2106,23 +2424,49 @@ function flashSaveIndicator(msg, isError){
   saveIndicatorTimer = setTimeout(()=>el.classList.remove('show'), 1600);
 }
 
+/** Full-screen error state shown instead of the app when we can't be sure
+ *  what's actually in the database — deliberately does NOT render the app
+ *  underneath (which could look like "all data is gone" when it's really
+ *  just a load failure), and does NOT touch Firestore in any way. */
+function showLoadError(msg){
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg);">
+      <div style="max-width:440px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:36px 30px;box-shadow:var(--shadow);">
+        <div style="width:48px;height:48px;border-radius:50%;background:var(--danger-soft);display:flex;align-items:center;justify-content:center;margin:0 auto 16px auto;color:var(--danger);">${ICONS.info}</div>
+        <h2 style="margin:0 0 8px 0;font-size:16px;font-weight:800;">無法載入資料</h2>
+        <p style="margin:0 0 22px 0;font-size:13px;color:var(--text-soft);line-height:1.7;">${msg}</p>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="location.reload()">重新整理</button>
+      </div>
+    </div>`;
+}
+
 async function loadData(){
   try{
     const snap = await fbDocRef.get();
-    if(snap.exists && snap.data().payload){
+    if(snap.exists && snap.data() && snap.data().payload){
       const parsed = JSON.parse(snap.data().payload);
       if(parsed.db){
         Object.keys(db).forEach(k=>{ db[k] = parsed.db[k] !== undefined ? parsed.db[k] : db[k]; });
       }
       if(parsed.seq){ Object.assign(seq, parsed.seq); }
-    } else {
+      dataReady = true;
+      renderApp();
+    } else if(snap.exists === false){
+      // Genuinely confirmed brand-new database — safe to seed and initialize.
       seedAssets();
+      dataReady = true;
+      renderApp();
+    } else {
+      // Document exists but its shape is unexpected — do NOT guess, do NOT overwrite.
+      dataReady = false;
+      showLoadError('讀取到的資料庫內容格式異常。為了避免覆蓋現有資料，系統已暫停自動儲存 — 請重新整理再試一次，如果持續發生，請檢查 Firebase 主控台的 Firestore 內容。');
     }
   }catch(e){
-    console.error('Firestore load failed, using sample data', e);
-    if(db.assets.length===0) seedAssets();
+    console.error('Firestore load failed', e);
+    dataReady = false;
+    showLoadError('無法連線到資料庫，請檢查網路連線後重新整理頁面。此狀態下不會顯示或覆蓋任何雲端資料，以策安全。');
   }
-  renderApp();
 }
 
 /* =========================================================================
