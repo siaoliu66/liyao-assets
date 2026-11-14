@@ -6,22 +6,20 @@
 <title>資產管理系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<!-- Firebase (Firestore) — shared backend so this file works once self-hosted outside Claude -->
-<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
+<!-- 後端：Google Apps Script（見 Code.gs）。網頁內不含任何金鑰或密碼 -->
 <!-- ExcelJS — generates the .xlsx import template with live dropdown lists -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script>
-  firebase.initializeApp({
-    apiKey: "AIzaSyDnN9uL6BjSg3UVkRH8HQpSRdbI6Aa6_MU",
-    authDomain: "liyao-111e7.firebaseapp.com",
-    projectId: "liyao-111e7",
-    storageBucket: "liyao-111e7.firebasestorage.app",
-    messagingSenderId: "1043941611422",
-    appId: "1:1043941611422:web:f6443641b697641856288f"
+  // 後端網址（Google Apps Script 部署後的「網頁應用程式」網址，貼在這裡）。
+  // 這個網址本身不是祕密；密碼與資料庫憑證都只存在 Apps Script 的「指令碼屬性」。
+  const API_URL = 'https://script.google.com/macros/s/AKfycbyh2j5hk91vFa1PQINVSrwBugfFANPIDJ0FzjXdRJQIFwujtprRpequ4PPwbaS6fB2l0A/exec';
+  // 本機（localhost / 127.0.0.1 / file:）= 測試環境，使用獨立資料，不會碰到正式資料
+  const IS_DEV_ENV = ['localhost','127.0.0.1','[::1]',''].includes(location.hostname) || location.protocol === 'file:';
+  const API_ENV = IS_DEV_ENV ? 'dev' : 'prod';
+  if (IS_DEV_ENV) document.addEventListener('DOMContentLoaded', function(){
+    document.body.classList.add('is-dev');
+    document.title = '【測試環境】' + document.title;
   });
-  const fbDocRef = firebase.firestore().collection('asset-hub').doc('shared-db');
 </script>
 <style>
   :root{
@@ -64,6 +62,14 @@
   ::-webkit-scrollbar{width:10px;height:10px;}
   ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:20px;border:2px solid var(--bg);}
   ::-webkit-scrollbar-track{background:transparent;}
+
+  /* ---------- Test-environment banner ---------- */
+  .dev-banner{display:none;position:fixed;top:0;left:0;right:0;height:24px;line-height:24px;z-index:600;
+    background:#F59E0B;color:#111;text-align:center;font-size:12.5px;font-weight:700;letter-spacing:1px;}
+  body.is-dev .dev-banner{display:block;}
+  body.is-dev{padding-top:24px;}
+  body.is-dev .sidebar{top:24px;height:calc(100vh - 24px);}
+  body.is-dev .topbar{top:24px;}
 
   /* ---------- App shell ---------- */
   #app{display:flex;min-height:100vh;}
@@ -435,6 +441,7 @@
 </style>
 </head>
 <body>
+<div class="dev-banner">測試環境　資料與正式系統完全分開（shared-db-dev）</div>
 
 <div id="auth-gate" class="auth-gate">
   <div class="auth-card">
@@ -657,12 +664,19 @@ function buildAssetCode(companyId, categoryId){
   return `${company.code}-${catSegment}-${String(n).padStart(3,'0')}`;
 }
 
-/** Suggests the next available 2-digit child code within a parent category (01, 02, ...). */
+/** Smallest unused 2-digit number (01..99) given a collection of numbers already taken. */
+function smallestFreeChildNumber(takenNumbers){
+  const taken = new Set(takenNumbers);
+  for(let n=1;n<=99;n++){ if(!taken.has(n)) return n; }
+  return null;
+}
+/** Suggests the next child code within a parent category: the SMALLEST unused number, so a
+ *  number freed by deleting a child is reused first (1,2,4,5 → 3), and only once there is no
+ *  gap does it continue after the largest (1..5 → 6). Returns '' if all 99 are taken. */
 function nextChildCategoryCode(parentId){
-  const siblings = db.categories.filter(c=>c.parentId===parentId);
-  let max = 0;
-  siblings.forEach(c=>{ const n = parseInt(c.code,10); if(!Number.isNaN(n) && n>max) max = n; });
-  return String(max+1).padStart(2,'0');
+  const used = db.categories.filter(c=>c.parentId===parentId).map(c=>parseInt(c.code,10)).filter(n=>!Number.isNaN(n));
+  const n = smallestFreeChildNumber(used);
+  return n===null ? '' : String(n).padStart(2,'0');
 }
 
 const STATUS_STYLE = {
@@ -2017,6 +2031,176 @@ function deletePerson(id){
 /* =========================================================================
    系統管理：資產分類管理（先顯示大分類，點擊分類名稱才進入下一層）
    ========================================================================= */
+/* ---------- 資產分類匯入 ----------
+   範本格式：一列 = 一個子分類（大分類名稱／大分類代碼 重複填寫即可）。
+   只有大分類、沒有子分類名稱的列 = 只建立大分類。
+   子分類編號可選填（01～99）；留空則由系統自動帶入最小的空號（刪除後空出來的號碼會優先補上）。
+   已存在的分類：填了不同的編號 → 更新編號（匯入前會確認）；其餘欄位不會被修改。全部檢查通過才會匯入，有任何錯誤就一筆都不匯入。 */
+const CATEGORY_IMPORT_COLUMNS = [
+  { key:'parentName', label:'大分類名稱',            required:true },
+  { key:'parentCode', label:'大分類代碼(英文字母或數字)', required:true },
+  { key:'childName',  label:'子分類名稱',            required:false },
+  { key:'childCode',  label:'子分類編號(選填，兩位數字，留空=自動)', required:false },
+];
+
+async function downloadCategoryTemplate(){
+  try{
+    const wb = await buildImportTemplateWorkbook(CATEGORY_IMPORT_COLUMNS, ['電子器材', 'A', '筆電', ''], '分類匯入範本');
+    wb.worksheets[0].addRow(['電子器材', 'A', '螢幕', '05']);
+    wb.worksheets[0].addRow(['辦公設備', 'B', '', '']);
+    // 編號欄存成文字，避免 Excel 把 01 吃成 1
+    wb.worksheets[0].getColumn(4).numFmt = '@';
+    await downloadWorkbookAsXlsx(wb, `分類匯入範本_${todayStr()}.xlsx`);
+    showToast('已下載匯入範本');
+  }catch(e){
+    console.error('category template build failed', e);
+    showToast('範本產生失敗，請稍後再試', true);
+  }
+}
+
+/** Pure validation/planning step: reads rows (first row = header), never mutates db.
+ *  新增 + 更新：
+ *   - 大分類／子分類不存在 → 新增
+ *   - 子分類名稱已存在於該大分類底下，且檔案給了不同的編號 → 更新編號（只改編號）
+ *   - 大分類一律不會被修改（名稱或代碼對不上會報錯）
+ *  Returns { errors:[{line,messages}], plan:[{parent,isNew,children:[...]}], updates:[文字說明] }. */
+function planCategoryImport(rows){
+  const errors = [];
+  const parents = db.categories.filter(c=>!c.parentId).map(c=>({
+    id:c.id, name:c.name, code:c.code, isNew:false, updated:false, oldCode:c.code, line:null,
+    children: db.categories.filter(x=>x.parentId===c.id).map(x=>({ id:x.id, name:x.name, code:x.code, oldCode:x.code, isNew:false, updated:false, line:null, seen:null })),
+  }));
+  const norm = normalizeForMatch;
+  const normCode = v => { const t=(v||'').toString().trim(); return /^\d{1,2}$/.test(t) ? t.padStart(2,'0') : t; };
+  // 先掃一遍：檔案內手動指定的編號（依大分類代碼分組），自動編號時要避開，才不會撞號
+  const explicitInFile = {};
+  rows.slice(1).forEach(cols=>{
+    const pc = (cols[1]||'').trim().toUpperCase(), cc = normCode(cols[3]);
+    if(pc && cc && /^\d{2}$/.test(cc)) (explicitInFile[pc] = explicitInFile[pc] || []).push(Number(cc));
+  });
+
+  rows.slice(1).forEach((cols, idx)=>{
+    const line = idx+2;
+    const parentName = (cols[0]||'').trim();
+    const parentCode = (cols[1]||'').trim().toUpperCase();
+    const childName  = (cols[2]||'').trim();
+    const childCodeRaw = normCode(cols[3]);
+    if(!parentName && !parentCode && !childName && !childCodeRaw) return; // blank row
+    const msgs = [];
+    if(!parentName) msgs.push('「大分類名稱」未填寫');
+    if(!parentCode) msgs.push('「大分類代碼」未填寫');
+    else if(!/^[A-Z0-9]+$/.test(parentCode)) msgs.push(`「大分類代碼」只能是英文字母或數字：${parentCode}`);
+    if(childCodeRaw && !childName) msgs.push('有填「子分類編號」但沒有「子分類名稱」');
+    if(childCodeRaw && !/^(0[1-9]|[1-9][0-9])$/.test(childCodeRaw)) msgs.push(`「子分類編號」請填 01～99 的兩位數字：${childCodeRaw}`);
+    if(msgs.length){ errors.push({ line, messages:msgs }); return; }
+
+    const byCode = parents.find(p=>norm(p.code)===norm(parentCode));
+    const byName = parents.find(p=>norm(p.name)===norm(parentName));
+    let target = null;
+    if(byCode && byName && byCode!==byName){
+      msgs.push(`「${parentName}」與代碼 ${parentCode} 對不上：名稱屬於代碼 ${byName.code}，代碼 ${parentCode} 屬於「${byCode.name}」`);
+    } else if(byCode && !byName){
+      msgs.push(`代碼 ${parentCode} 已被「${byCode.name}」使用，與「${parentName}」衝突`);
+    } else if(byName && !byCode){
+      msgs.push(`「${byName.name}」已存在，代碼是 ${byName.code}，與檔案內的 ${parentCode} 不一致（匯入不會修改大分類代碼）`);
+    } else if(byCode && byName){
+      target = byCode;
+    } else {
+      target = { id:null, name:parentName, code:parentCode, oldCode:null, isNew:true, updated:false, children:[] };
+      parents.push(target);
+    }
+
+    if(target && childName){
+      const existing = target.children.find(c=>norm(c.name)===norm(childName));
+      if(existing){
+        if(existing.seen){ msgs.push(`「${target.name} / ${childName}」在檔案內重複（與第 ${existing.seen} 列）`); }
+        else {
+          existing.seen = line;
+          if(childCodeRaw && childCodeRaw !== existing.code){ existing.code = childCodeRaw; existing.updated = true; existing.line = line; }
+        }
+      } else {
+        if(childCodeRaw){
+          target.children.push({ id:null, name:childName, code:childCodeRaw, isNew:true, updated:false, line, seen:line });
+        } else {
+          // 自動編號 = 最小的空號（會避開既有編號、檔案內手動指定的編號、以及本次已自動分配的編號）
+          const taken = target.children.map(c=>parseInt(c.code,10)).concat(explicitInFile[target.code] || []);
+          const n = smallestFreeChildNumber(taken);
+          if(n===null) msgs.push(`「${target.name}」的 01～99 已全部用完，無法自動編號`);
+          else target.children.push({ id:null, name:childName, code:String(n).padStart(2,'0'), isNew:true, updated:false, line, seen:line });
+        }
+      }
+    }
+    if(msgs.length) errors.push({ line, messages:msgs });
+  });
+
+  // 最後統一檢查：同一個大分類底下編號不能重複（允許檔案內互換編號，所以放在最後才檢查）
+  parents.forEach(p=>{
+    const seen = {};
+    p.children.forEach(c=>{
+      if(seen[c.code]){
+        const later = (c.line||0) >= (seen[c.code].line||0) ? c : seen[c.code];
+        errors.push({ line: later.line || '—', messages:[`「${p.name}」的編號 ${c.code} 重複：「${seen[c.code].name}」與「${c.name}」`] });
+      } else seen[c.code] = c;
+    });
+  });
+  errors.sort((a,b)=>(a.line===b.line?0:(a.line==='—'?1:b.line==='—'?-1:a.line-b.line)));
+
+  const updates = [];
+  parents.forEach(p=>{
+    if(p.updated && p.code!==p.oldCode) updates.push(`大分類「${p.name}」代碼：${p.oldCode} → ${p.code}`);
+    p.children.filter(c=>c.updated).forEach(c=>updates.push(`「${p.name} / ${c.name}」編號：${c.oldCode} → ${c.code}`));
+  });
+  const plan = parents
+    .map(p=>({ parent:p, isNew:p.isNew, codeUpdated:p.updated && p.code!==p.oldCode, children:p.children.filter(c=>c.isNew || c.updated) }))
+    .filter(x=>x.isNew || x.codeUpdated || x.children.length);
+  return { errors, plan, updates };
+}
+
+function importCategoryCsv(file){
+  if(!file) return;
+  readImportFileToRows(file).then((rows)=>{
+    if(rows.length<2){ showToast('檔案內沒有可匯入的資料', true); return; }
+    const { errors, plan, updates } = planCategoryImport(rows);
+    if(errors.length){ showImportErrors('分類', errors); return; }
+    if(!plan.length){ showToast('檔案內的分類都已存在且編號相同，沒有任何變動', true); return; }
+
+    const commit = ()=>{
+      let addParents = 0, addChildren = 0, upd = 0;
+      plan.forEach(x=>{
+        let parentId = x.parent.id;
+        if(x.isNew){
+          parentId = uid('cat');
+          db.categories.push({ id:parentId, name:x.parent.name, code:x.parent.code, parentId:null });
+          addParents++;
+        } else if(x.codeUpdated){
+          byId(db.categories, parentId).code = x.parent.code; upd++;
+        }
+        x.children.forEach(c=>{
+          if(c.isNew){ db.categories.push({ id:uid('cat'), name:c.name, code:c.code, parentId }); addChildren++; }
+          else if(c.updated){ byId(db.categories, c.id).code = c.code; upd++; }
+        });
+      });
+      state.page = 1;
+      rerenderContent();
+      showToast(`匯入完成：新增 ${addParents} 個大分類、${addChildren} 個子分類，更新 ${upd} 個編號`);
+    };
+
+    if(!updates.length){ commit(); return; }
+    // 有「更新既有編號」時，先請使用者確認一次
+    openModal({
+      title:'確認更新分類編號',
+      body:`<div class="helper-note">${ICONS.info}<span>以下既有分類的編號會被修改。已建立資產的編號不會改變，只影響之後新增的資產。</span></div>
+        <div style="max-height:300px;overflow-y:auto;font-size:13px;line-height:1.9;border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+          ${updates.map(u=>escHtml(u)).join('<br>')}
+        </div>`,
+      saveLabel:'確認更新並匯入',
+      onSave:()=>{ commit(); return true; }
+    });
+  }).catch(()=>{
+    showToast('讀取檔案失敗，請確認檔案格式是否為 CSV 或 Excel(.xlsx)', true);
+  });
+}
+
 function renderCategoriesPage(){
   const parentId = state.categoryParentId;
   const levelItems = db.categories.filter(c => (c.parentId||null) === (parentId||null));
@@ -2025,7 +2209,10 @@ function renderCategoriesPage(){
   <div class="helper-note">${ICONS.info}<span>先顯示大分類，點擊分類名稱可進入下一層查看或建立子分類。</span></div>
   <div class="crud-header">
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;">${buildCategoryBreadcrumb(parentId)}</div>
-    <button class="btn btn-primary" onclick="openCategoryModal(null,'${parentId||''}')">${ICONS.plus}<span>${parentId ? '新增子分類' : '新增分類'}</span></button>
+    <div style="display:flex;gap:8px;">
+      <button class="btn" onclick="openImportModal({title:'匯入分類', hint:'請先下載範本：一列填一個子分類（大分類名稱與代碼重複填寫即可），只填大分類的列代表只建立大分類。子分類編號可選填（01～99），留空則由系統自動帶入最小的空號。範本內的範例列請直接覆蓋或刪除。已存在的分類若填了不同的編號，會更新編號（匯入前會先請你確認），名稱不會被改動。任何一列有誤就整份都不會匯入。', templateFn:'downloadCategoryTemplate', onFile:importCategoryCsv})">${ICONS.upload}<span>匯入</span></button>
+      <button class="btn btn-primary" onclick="openCategoryModal(null,'${parentId||''}')">${ICONS.plus}<span>${parentId ? '新增子分類' : '新增分類'}</span></button>
+    </div>
   </div>
   <div class="panel">
     <div class="table-wrap">
@@ -2077,7 +2264,8 @@ function openCategoryModal(id, parentIdForNew){
   const body = isChild
     ? `
       <div class="field"><label>子分類名稱 <span class="req">*</span></label><input id="m-cat-name" type="text" value="${escAttr(c?.name||'')}"></div>
-      <div class="field-hint">編號由系統自動依序帶入（01、02...），不用手動輸入。</div>`
+      <div class="field"><label>子分類編號（兩位數字，選填）</label><input id="m-cat-childcode" type="text" inputmode="numeric" maxlength="2" value="${escAttr(c?.code||'')}" placeholder="留空 = 系統自動帶入最小的空號（${nextChildCategoryCode(parentId)}）"></div>
+      <div class="field-hint">可手動指定 01～99，例如補回刪除後空出來的號碼。同一個大分類底下編號不能重複。${c ? '<br>注意：修改編號只影響之後新增的資產，已建立資產的編號不會改變。' : ''}</div>`
     : `
       <div class="field"><label>分類名稱 <span class="req">*</span></label><input id="m-cat-name" type="text" value="${escAttr(c?.name||'')}"></div>
       <div class="field"><label>分類代碼（英文字母） <span class="req">*</span></label><input id="m-cat-code" type="text" value="${escAttr(c?.code||'')}" placeholder="例如：C"></div>
@@ -2091,11 +2279,19 @@ function openCategoryModal(id, parentIdForNew){
       if(!name){ showToast('請輸入分類名稱', true); return false; }
 
       if(isChild){
-        if(c){
-          c.name = name; // code stays as originally auto-assigned — never edited here
+        const rawCode = document.getElementById('m-cat-childcode').value.trim();
+        let childCode;
+        if(!rawCode){
+          childCode = c ? c.code : nextChildCategoryCode(parentId);
+          if(!childCode){ showToast('這個大分類的 01～99 已全部用完', true); return false; }
         } else {
-          db.categories.push({ id:uid('cat'), name, code: nextChildCategoryCode(parentId), parentId });
+          if(!/^\d{1,2}$/.test(rawCode) || Number(rawCode) < 1){ showToast('子分類編號請輸入 01～99 的數字', true); return false; }
+          childCode = rawCode.padStart(2,'0');
         }
+        const clash = db.categories.find(x=>x.parentId===parentId && x.id!==(c?.id) && x.code===childCode);
+        if(clash){ showToast(`編號 ${childCode} 已被「${clash.name}」使用，請換一個`, true); return false; }
+        if(c){ c.name = name; c.code = childCode; }
+        else { db.categories.push({ id:uid('cat'), name, code: childCode, parentId }); }
       } else {
         const code = document.getElementById('m-cat-code').value.trim().toUpperCase();
         if(!code){ showToast('請輸入分類代碼', true); return false; }
@@ -2402,13 +2598,11 @@ function persistData(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async ()=>{
     try{
-      await fbDocRef.set({
-        payload: JSON.stringify({ db, seq }),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      });
+      await apiCall('save', { payload: JSON.stringify({ db, seq }) });
       flashSaveIndicator('已儲存');
     }catch(e){
-      console.error('Firestore save failed', e);
+      console.error('save failed', e);
+      if(e && e.message === 'unauthorized'){ handleSessionExpired(); return; }
       flashSaveIndicator('儲存失敗，變更僅保留在此分頁', true);
     }
   }, 450);
@@ -2443,16 +2637,16 @@ function showLoadError(msg){
 
 async function loadData(){
   try{
-    const snap = await fbDocRef.get();
-    if(snap.exists && snap.data() && snap.data().payload){
-      const parsed = JSON.parse(snap.data().payload);
+    const r = await apiCall('load');
+    if(r.exists && r.payload){
+      const parsed = JSON.parse(r.payload);
       if(parsed.db){
         Object.keys(db).forEach(k=>{ db[k] = parsed.db[k] !== undefined ? parsed.db[k] : db[k]; });
       }
       if(parsed.seq){ Object.assign(seq, parsed.seq); }
       dataReady = true;
       renderApp();
-    } else if(snap.exists === false){
+    } else if(r.exists === false){
       // Genuinely confirmed brand-new database — safe to seed and initialize.
       seedAssets();
       dataReady = true;
@@ -2460,45 +2654,82 @@ async function loadData(){
     } else {
       // Document exists but its shape is unexpected — do NOT guess, do NOT overwrite.
       dataReady = false;
-      showLoadError('讀取到的資料庫內容格式異常。為了避免覆蓋現有資料，系統已暫停自動儲存 — 請重新整理再試一次，如果持續發生，請檢查 Firebase 主控台的 Firestore 內容。');
+      showLoadError('讀取到的資料庫內容格式異常。為了避免覆蓋現有資料，系統已暫停自動儲存 — 請重新整理再試一次，如果持續發生，請檢查 Firestore 內容。');
     }
   }catch(e){
-    console.error('Firestore load failed', e);
+    console.error('load failed', e);
     dataReady = false;
+    if(e && e.message === 'unauthorized'){ handleSessionExpired(); return; }
     showLoadError('無法連線到資料庫，請檢查網路連線後重新整理頁面。此狀態下不會顯示或覆蓋任何雲端資料，以策安全。');
   }
 }
 
 /* =========================================================================
-   AUTH — shared-password login gate, backed by Firebase Authentication.
+   AUTH — shared-password login gate, verified server-side by the Apps Script backend.
    Firestore rules require request.auth != null, so without signing in here
    the database itself is unreadable — this isn't just a UI-level lock.
    ========================================================================= */
-const SHARED_LOGIN_EMAIL = 'team@liyao-111e7.local'; // must match the user created in Firebase Console > Authentication
+const TOKEN_KEY = 'ah-token'; // 只存在目前分頁（sessionStorage）：關閉分頁後必須重新輸入密碼
 
-function submitPassword(){
-  const pwd = document.getElementById('auth-password').value;
+function getToken(){ try{ return sessionStorage.getItem(TOKEN_KEY) || ''; }catch(e){ return ''; } }
+function setToken(t){ try{ t ? sessionStorage.setItem(TOKEN_KEY, t) : sessionStorage.removeItem(TOKEN_KEY); }catch(e){} }
+
+/** 呼叫後端。用 text/plain 送出，避免瀏覽器的 CORS 預檢請求（Apps Script 不支援）。 */
+async function apiCall(action, extra){
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(Object.assign({ action, env: API_ENV, token: getToken() }, extra || {})),
+  });
+  const r = await res.json();
+  if(!r.ok) throw new Error(r.error || 'request_failed');
+  return r;
+}
+
+function showGate(){
+  document.getElementById('auth-gate').style.display = 'flex';
+  document.getElementById('app').innerHTML = '';
+}
+
+function handleSessionExpired(){
+  dataReady = false;
+  setToken('');
+  showGate();
+  document.getElementById('auth-error').textContent = '登入已逾時，請重新輸入密碼';
+}
+
+async function submitPassword(){
+  const input = document.getElementById('auth-password');
   const errEl = document.getElementById('auth-error');
   errEl.textContent = '';
-  if(!pwd){ errEl.textContent = '請輸入密碼'; return; }
-  firebase.auth().signInWithEmailAndPassword(SHARED_LOGIN_EMAIL, pwd)
-    .catch(()=>{ errEl.textContent = '密碼錯誤，請再試一次'; });
+  if(!input.value){ errEl.textContent = '請輸入密碼'; return; }
+  try{
+    const r = await apiCall('login', { password: input.value });
+    input.value = '';
+    setToken(r.token);
+    document.getElementById('auth-gate').style.display = 'none';
+    loadData();
+  }catch(e){
+    errEl.textContent =
+      e.message === 'locked' ? '錯誤次數過多，請 10 分鐘後再試' :
+      e.message === 'bad_password' ? '密碼錯誤，請再試一次' :
+      '無法連線到後端，請稍後再試';
+  }
 }
 
 function logout(){
-  firebase.auth().signOut();
+  setToken('');
+  dataReady = false;
+  showGate();
 }
 
-firebase.auth().onAuthStateChanged((user)=>{
-  const gate = document.getElementById('auth-gate');
-  if(user){
-    gate.style.display = 'none';
-    loadData();
-  } else {
-    gate.style.display = 'flex';
-    document.getElementById('app').innerHTML = '';
-  }
-});
+// 開啟頁面：本分頁已有憑證就直接載入（憑證過期會自動回到登入畫面），否則顯示登入畫面
+if(getToken()){
+  document.getElementById('auth-gate').style.display = 'none';
+  loadData();
+} else {
+  showGate();
+}
 </script>
 </body>
 </html>
